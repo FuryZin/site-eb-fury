@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login — EB do Fury</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-white flex items-center justify-center h-screen">
+    <div class="bg-slate-900 border border-green-500/30 p-8 rounded-2xl w-full max-w-md shadow-2xl space-y-6">
+        <h1 class="text-xl font-bold text-green-400 text-center">EXÉRCITO DO FURY</h1>
+        
+        <div class="flex border-b border-gray-800 pb-2">
+            <button onclick="tab('roblox')" id="bR" class="flex-1 text-xs font-bold uppercase text-green-400 border-b-2 border-green-500 pb-2">Roblox</button>
+            <button onclick="tab('owner')" id="bO" class="flex-1 text-xs font-bold uppercase text-gray-400 pb-2">Proprietário</button>
+        </div>
+
+        <form id="fR" onsubmit="lR(event)" class="space-y-4">
+            <input type="text" id="rId" required placeholder="Seu Roblox User ID" class="w-full bg-black border border-gray-700 rounded-lg p-3 text-sm">
+            <input type="text" id="rName" required placeholder="Seu Nickname" class="w-full bg-black border border-gray-700 rounded-lg p-3 text-sm">
+            <button type="submit" class="w-full bg-green-600 hover:bg-green-500 text-black font-bold p-3 rounded-lg text-sm">ENTRAR</button>
+        </form>
+
+        <form id="fO" onsubmit="lO(event)" class="space-y-4 hidden">
+            <input type="password" id="oPass" required placeholder="Senha do Proprietário" class="w-full bg-black border border-gray-700 rounded-lg p-3 text-sm">
+            <button type="submit" class="w-full bg-emerald-700 hover:bg-emerald-600 text-white font-bold p-3 rounded-lg text-sm">ACESSAR DONO</button>
+        </form>
+    </div>
+    <script>
+        function tab(t) {
+            if(t==='roblox'){document.getElementById('fR').classList.remove('hidden');document.getElementById('fO').classList.add('hidden');}
+            else{document.getElementById('fO').classList.remove('hidden');document.getElementById('fR').classList.add('hidden');}
+        }
+        async function lR(e) {
+            e.preventDefault();
+            const res = await fetch('/auth/roblox', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({robloxId:document.getElementById('rId').value, username:document.getElementById('rName').value})});
+            const d = await res.json();
+            if(res.ok) window.location.href = d.redirect; else alert(d.error);
+        }
+        async function lO(e) {
+            e.preventDefault();
+            const res = await fetch('/auth/owner', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({password:document.getElementById('oPass').value})});
+            const d = await res.json();
+            if(res.ok) window.location.href = d.redirect; else alert(d.error);
+        }
+    </script>
+</body>
+</html>
