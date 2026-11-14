@@ -1,16 +1,12 @@
 {
-  "name": "site-eb-fury",
-  "version": "2.0.0",
-  "main": "index.js",
+  "name": "quiz-exercito-roblox",
+  "version": "1.0.0",
+  "description": "Quiz do Exercito com Integracao Discord",
+  "main": "server.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node server.js"
   },
   "dependencies": {
-    "argon2": "^0.40.3",
-    "axios": "^1.6.8",
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "express-session": "^1.18.0",
-    "sqlite3": "^5.1.7"
+    "express": "^4.18.2"
   }
 }
