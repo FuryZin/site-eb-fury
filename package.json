@@ -1,7 +1,6 @@
 {
-  "name": "quiz-exercito-roblox",
+  "name": "quiz-exercito",
   "version": "1.0.0",
-  "description": "Quiz do Exercito com Integracao Discord",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
