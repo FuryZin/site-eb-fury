@@ -134,4 +134,9 @@ app.get('/admin/stats', async (req, res) => {
     }
 });
 
+// Adicione esta rota bem antes do app.listen
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'login.html'));
+});
+
 app.listen(PORT, () => console.log(`[EB FURY] Rodando na porta ${PORT}`));
