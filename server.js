@@ -1,14 +1,16 @@
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// Configurar pasta pública
-app.use(express.static(path.join(__dirname, 'public')));
-
-// Rota de segurança caso o arquivo index.html esteja na raiz ou na pasta public
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    const htmlPath = path.join(__dirname, 'index.html');
+    if (fs.existsSync(htmlPath)) {
+        res.sendFile(htmlPath);
+    } else {
+        res.send("<h1>Erro: Arquivo index.html nao encontrado na raiz do projeto!</h1>");
+    }
 });
 
 app.listen(PORT, () => {
