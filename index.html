@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fury Market — Marketplace de Free Fire</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        furyBg: '#0a0a0c',
+                        furyCard: '#121216',
+                        furyBorder: '#262630',
+                        furyAccent: '#00ff66',
+                        furyAccentHover: '#00cc52',
+                        furyOrange: '#ff6600',
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-furyBg text-gray-100 font-sans min-h-screen flex flex-col">
+
+    <!-- Cabeçalho -->
+    <header class="bg-furyCard border-b border-furyBorder sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-2 cursor-pointer" onclick="window.location.href='/'">
+                <i class="fa-solid fa-gamepad text-furyAccent text-3xl"></i>
+                <span class="text-xl font-black tracking-wider text-white">FURY<span class="text-furyAccent">MARKET</span></span>
+            </div>
+            <div class="flex items-center gap-6">
+                <a href="/" class="text-furyAccent font-semibold text-sm">Início</a>
+                <a href="/marketplace" class="hover:text-furyAccent text-sm transition">Explorar Marketplace</a>
+                <button class="bg-furyAccent hover:bg-furyAccentHover text-furyBg font-bold px-4 py-2 rounded-lg text-sm transition">Entrar</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Banner -->
+    <section class="max-w-7xl mx-auto px-4 mt-8 w-full">
+        <div class="bg-gradient-to-r from-zinc-900 to-furyCard border border-furyBorder rounded-2xl p-8 md:p-12 flex flex-col md:flex-row items-center justify-between gap-8">
+            <div class="max-w-xl">
+                <span class="bg-furyAccent/10 text-furyAccent border border-furyAccent/20 text-xs font-semibold px-3 py-1 rounded-full uppercase">Marketplace Oficial Gamer</span>
+                <h1 class="text-3xl md:text-5xl font-extrabold mt-4 mb-4 text-white">O Maior Mercado de <span class="text-furyAccent">Free Fire</span></h1>
+                <p class="text-gray-400 mb-6 text-sm">Compre diamantes, gift cards e serviços com segurança total e entrega rápida.</p>
+                <a href="/marketplace" class="inline-block bg-furyAccent hover:bg-furyAccentHover text-furyBg font-bold px-6 py-3 rounded-xl transition">
+                    Ver Marketplace
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Destaques -->
+    <main class="max-w-7xl mx-auto px-4 my-12 flex-1 w-full">
+        <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-2">
+            <i class="fa-solid fa-fire text-furyOrange"></i> Destaques
+        </h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div class="bg-furyCard border border-furyBorder rounded-xl p-4">
+                <h3 class="font-bold text-white mb-2">Recarga de Diamantes</h3>
+                <p class="text-sm text-gray-400 mb-4">Diamantes oficiais entregues via ID com total segurança.</p>
+                <a href="/product" class="block text-center bg-furyBg border border-furyBorder hover:bg-furyAccent hover:text-furyBg font-bold py-2 rounded-lg transition text-sm">Ver Produto</a>
+            </div>
+        </div>
+    </main>
+</body>
+</html>
