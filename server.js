@@ -1,29 +1,45 @@
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const app = express();
 
-// O Railway exige que a porta seja lida de process.env.PORT
 const PORT = process.env.PORT || 3000;
 
-// Servir arquivos estáticos (CSS, imagens, etc.) da pasta 'public'
+// Servir arquivos estáticos da pasta public
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Rota Principal (Home)
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'views', 'index.html'));
+    const indexPath = path.join(__dirname, 'views', 'index.html');
+    
+    // Verifica se o arquivo existe antes de enviar
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        res.status(404).send('<h1>Erro 404: Arquivo views/index.html não foi encontrado no servidor!</h1><p>Verifique se a pasta "views" e o arquivo "index.html" foram enviados para o GitHub.</p>');
+    }
 });
 
 // Rota do Marketplace
 app.get('/marketplace', (req, res) => {
-    res.sendFile(path.join(__dirname, 'views', 'marketplace.html'));
+    const mktPath = path.join(__dirname, 'views', 'marketplace.html');
+    if (fs.existsSync(mktPath)) {
+        res.sendFile(mktPath);
+    } else {
+        res.redirect('/');
+    }
 });
 
 // Rota do Produto
 app.get('/product', (req, res) => {
-    res.sendFile(path.join(__dirname, 'views', 'product.html'));
+    const prodPath = path.join(__dirname, 'views', 'product.html');
+    if (fs.existsSync(prodPath)) {
+        res.sendFile(prodPath);
+    } else {
+        res.redirect('/');
+    }
 });
 
-// O '0.0.0.0' é necessário para o Railway liberar o acesso externo ao servidor
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🔥 Fury Market rodando com sucesso na porta ${PORT}`);
+    console.log(`🔥 Fury Market rodando na porta ${PORT}`);
 });
