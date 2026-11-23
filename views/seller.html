@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Seja um Vendedor — Fury Market</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-[#0a0a0c] text-white font-sans min-h-screen">
+    
+    <header class="bg-[#121216] border-b border-[#262630] h-20 flex items-center justify-between px-8">
+        <a href="/" class="text-xl font-bold"><i class="fa-solid fa-gamepad text-[#00ff66]"></i> FURYMARKET</a>
+        <a href="/" class="text-sm text-gray-400 hover:text-white">&larr; Voltar para Home</a>
+    </header>
+
+    <main class="max-w-2xl mx-auto px-4 py-12">
+        <div class="bg-[#121216] border border-[#262630] p-8 rounded-2xl">
+            <h1 class="text-2xl font-bold text-white mb-2">Solicitação para se Tornar Vendedor</h1>
+            <p class="text-sm text-gray-400 mb-6">Preencha o formulário abaixo. A análise será enviada para a nossa equipe no Discord.</p>
+
+            <div id="sellerAlert" class="hidden mb-6 p-4 rounded-xl text-center"></div>
+
+            <form id="sellerForm" class="space-y-5">
+                <div>
+                    <label class="block text-sm font-semibold mb-1">Seu Tag no Discord (ex: Usuario#1234 ou @usuario)</label>
+                    <input type="text" id="discordTag" required placeholder="Ex: Player#0001" class="w-full bg-[#0a0a0c] border border-[#262630] rounded-xl p-3 text-white focus:outline-none focus:border-[#00ff66]">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold mb-1">Seu ID Numérico do Discord</label>
+                    <input type="text" id="discordId" required placeholder="Ex: 847291039482910293" class="w-full bg-[#0a0a0c] border border-[#262630] rounded-xl p-3 text-white focus:outline-none focus:border-[#00ff66]">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold mb-1">Quais produtos você pretende vender?</label>
+                    <input type="text" id="products" required placeholder="Ex: Recarga de Diamantes, Gift Cards..." class="w-full bg-[#0a0a0c] border border-[#262630] rounded-xl p-3 text-white focus:outline-none focus:border-[#00ff66]">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold mb-1">Qual sua experiência com vendas gamers?</label>
+                    <input type="text" id="experience" placeholder="Ex: Já vendia no Discord há 1 ano..." class="w-full bg-[#0a0a0c] border border-[#262630] rounded-xl p-3 text-white focus:outline-none focus:border-[#00ff66]">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold mb-1">Descrição da sua Loja</label>
+                    <textarea id="description" rows="3" required placeholder="Conte um pouco sobre sua loja..." class="w-full bg-[#0a0a0c] border border-[#262630] rounded-xl p-3 text-white focus:outline-none focus:border-[#00ff66]"></textarea>
+                </div>
+
+                <div class="flex items-center gap-2 pt-2">
+                    <input type="checkbox" id="rulesCheck" required class="accent-[#00ff66] w-4 h-4">
+                    <label for="rulesCheck" class="text-xs text-gray-400">Concordo com as regras e declaro que NÃO venderei hacks, cheats ou produtos proibidos.</label>
+                </div>
+
+                <button type="submit" class="w-full bg-[#00ff66] text-[#0a0a0c] font-bold py-3.5 rounded-xl hover:bg-[#00cc52] transition flex items-center justify-center gap-2">
+                    <i class="fa-brands fa-discord"></i> Enviar Solicitação para Análise
+                </button>
+            </form>
+        </div>
+    </main>
+
+    <script>
+        document.getElementById('sellerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const payload = {
+                discordTag: document.getElementById('discordTag').value,
+                discordId: document.getElementById('discordId').value,
+                products: document.getElementById('products').value,
+                experience: document.getElementById('experience').value,
+                description: document.getElementById('description').value
+            };
+
+            const res = await fetch('/api/seller/apply', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await res.json();
+            const alert = document.getElementById('sellerAlert');
+            alert.classList.remove('hidden', 'bg-green-500/20', 'text-green-400', 'bg-red-500/20', 'text-red-400');
+            alert.classList.add(data.success ? 'bg-green-500/20' : 'bg-red-500/20', data.success ? 'text-green-400' : 'text-red-400');
+            alert.innerText = data.message;
+
+            if (data.success) {
+                document.getElementById('sellerForm').reset();
+            }
+        });
+    </script>
+</body>
+</html>
