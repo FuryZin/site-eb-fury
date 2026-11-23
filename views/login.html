@@ -1,1 +1,117 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login / Cadastro — Fury Market</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-[#0a0a0c] text-white flex items-center justify-center min-h-screen px-4">
 
+    <div class="bg-[#121216] border border-[#262630] w-full max-w-md p-8 rounded-2xl shadow-2xl">
+        <!-- Logo -->
+        <div class="text-center mb-8">
+            <a href="/" class="text-2xl font-black text-white"><i class="fa-solid fa-gamepad text-[#00ff66]"></i> FURY<span class="text-[#00ff66]">MARKET</span></a>
+            <p class="text-gray-400 text-sm mt-2">Acesse sua conta gamer</p>
+        </div>
+
+        <!-- Alerta de Erro/Sucesso -->
+        <div id="alertBox" class="hidden mb-4 p-3 rounded-lg text-sm text-center"></div>
+
+        <!-- Form Login -->
+        <form id="loginForm" class="space-y-4">
+            <div>
+                <label class="block text-sm text-gray-400 mb-1">E-mail</label>
+                <input type="email" id="loginEmail" required class="w-full bg-[#0a0a0c] border border-[#262630] rounded-lg p-3 text-white focus:outline-none focus:border-[#00ff66]">
+            </div>
+            <div>
+                <label class="block text-sm text-gray-400 mb-1">Senha</label>
+                <input type="password" id="loginPassword" required class="w-full bg-[#0a0a0c] border border-[#262630] rounded-lg p-3 text-white focus:outline-none focus:border-[#00ff66]">
+            </div>
+            <button type="submit" class="w-full bg-[#00ff66] text-[#0a0a0c] font-bold py-3 rounded-lg hover:bg-[#00cc52] transition">Entrar na Conta</button>
+        </form>
+
+        <!-- Form Cadastro (Oculto por padrão) -->
+        <form id="registerForm" class="space-y-4 hidden">
+            <div>
+                <label class="block text-sm text-gray-400 mb-1">Nome de Usuário</label>
+                <input type="text" id="regUser" required class="w-full bg-[#0a0a0c] border border-[#262630] rounded-lg p-3 text-white focus:outline-none focus:border-[#00ff66]">
+            </div>
+            <div>
+                <label class="block text-sm text-gray-400 mb-1">E-mail</label>
+                <input type="email" id="regEmail" required class="w-full bg-[#0a0a0c] border border-[#262630] rounded-lg p-3 text-white focus:outline-none focus:border-[#00ff66]">
+            </div>
+            <div>
+                <label class="block text-sm text-gray-400 mb-1">Senha</label>
+                <input type="password" id="regPass" required class="w-full bg-[#0a0a0c] border border-[#262630] rounded-lg p-3 text-white focus:outline-none focus:border-[#00ff66]">
+            </div>
+            <button type="submit" class="w-full bg-[#00ff66] text-[#0a0a0c] font-bold py-3 rounded-lg hover:bg-[#00cc52] transition">Criar Minha Conta</button>
+        </form>
+
+        <div class="mt-6 text-center text-sm text-gray-400">
+            <button id="toggleBtn" onclick="toggleAuth()" class="text-[#00ff66] hover:underline">Não tem conta? Cadastre-se</button>
+        </div>
+    </div>
+
+    <script>
+        let isLogin = true;
+        function toggleAuth() {
+            isLogin = !isLogin;
+            document.getElementById('loginForm').classList.toggle('hidden', !isLogin);
+            document.getElementById('registerForm').classList.toggle('hidden', isLogin);
+            document.getElementById('toggleBtn').innerText = isLogin ? "Não tem conta? Cadastre-se" : "Já tem conta? Faça Login";
+        }
+
+        // Envio do Login
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+
+            const res = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+            const data = await res.json();
+            
+            showAlert(data.message, data.success);
+            if (data.success) {
+                localStorage.setItem('fury_token', data.token);
+                localStorage.setItem('fury_user', data.username);
+                setTimeout(() => window.location.href = '/', 1000);
+            }
+        });
+
+        // Envio do Cadastro
+        document.getElementById('registerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('regUser').value;
+            const email = document.getElementById('regEmail').value;
+            const password = document.getElementById('regPass').value;
+
+            const res = await fetch('/api/auth/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, email, password })
+            });
+            const data = await res.json();
+
+            showAlert(data.message, data.success);
+            if (data.success) {
+                localStorage.setItem('fury_token', data.token);
+                localStorage.setItem('fury_user', data.username);
+                setTimeout(() => window.location.href = '/', 1000);
+            }
+        });
+
+        function showAlert(msg, success) {
+            const box = document.getElementById('alertBox');
+            box.classList.remove('hidden', 'bg-red-500/20', 'text-red-400', 'bg-green-500/20', 'text-green-400');
+            box.classList.add(success ? 'bg-green-500/20' : 'bg-red-500/20', success ? 'text-green-400' : 'text-red-400');
+            box.innerText = msg;
+        }
+    </script>
+</body>
+</html>
