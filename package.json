@@ -1,7 +1,7 @@
 {
   "name": "fury-market",
   "version": "1.0.0",
-  "description": "Marketplace de Free Fire",
+  "description": "Marketplace Completo Gamer de Free Fire",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -10,6 +10,7 @@
     "bcryptjs": "^2.4.3",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
-    "jsonwebtoken": "^9.0.2"
+    "jsonwebtoken": "^9.0.2",
+    "sqlite3": "^5.1.6"
   }
 }
