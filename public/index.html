@@ -25,6 +25,7 @@
 </head>
 <body class="bg-furyBg text-gray-100 font-sans min-h-screen flex flex-col justify-between">
 
+    <!-- NAVBAR -->
     <header class="bg-furyCard border-b border-furyBorder sticky top-0 z-50">
         <div class="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between gap-4">
             <div class="flex items-center gap-2 cursor-pointer" onclick="navigate('home')">
@@ -33,6 +34,7 @@
             </div>
             <div class="flex items-center gap-4 text-sm font-semibold">
                 <button onclick="navigate('home')" class="hover:text-furyAccent">Início</button>
+                <button id="sellerDashNavBtn" onclick="navigate('seller-dashboard')" class="hidden text-furyAccent font-bold"><i class="fa-solid fa-box-open mr-1"></i>Painel do Vendedor</button>
                 <button onclick="navigate('seller')" class="hover:text-furyAccent text-furyOrange"><i class="fa-solid fa-store mr-1"></i>Seja Vendedor</button>
                 <button onclick="navigate('tickets')" class="hover:text-furyAccent">Suporte</button>
                 <button id="adminNavBtn" onclick="navigate('admin')" class="hidden text-red-400 hover:text-red-300 font-bold"><i class="fa-solid fa-user-shield mr-1"></i>Admin</button>
@@ -59,11 +61,13 @@
         function updateNav() {
             const authArea = document.getElementById('authNavArea');
             const adminBtn = document.getElementById('adminNavBtn');
-            if (currentRole === 'admin') adminBtn.classList.remove('hidden');
-            else adminBtn.classList.add('hidden');
+            const sellerBtn = document.getElementById('sellerDashNavBtn');
+
+            if (currentRole === 'admin') adminBtn.classList.remove('hidden'); else adminBtn.classList.add('hidden');
+            if (currentRole === 'seller' || currentRole === 'admin') sellerBtn.classList.remove('hidden'); else sellerBtn.classList.add('hidden');
 
             if (currentUser) {
-                authArea.innerHTML = `<span class="text-sm font-bold mr-2"><i class="fa-solid fa-user text-furyAccent mr-1"></i>${currentUser}</span>
+                authArea.innerHTML = `<span class="text-sm font-bold mr-2"><i class="fa-solid fa-user text-furyAccent mr-1"></i>${currentUser} (${currentRole})</span>
                     <button onclick="logout()" class="bg-furyBorder text-red-400 font-bold px-3 py-1.5 rounded-lg text-xs">Sair</button>`;
             } else {
                 authArea.innerHTML = `<button onclick="navigate('login')" class="bg-furyAccent text-furyBg font-bold px-4 py-2 rounded-lg text-sm">Entrar / Cadastrar</button>`;
@@ -100,26 +104,98 @@
                         <p class="text-gray-400 text-sm mb-4">Entrega rápida, vendedores verificados e suporte 24h.</p>
                         <button onclick="navigate('seller')" class="bg-furyAccent text-furyBg font-bold px-6 py-2.5 rounded-xl text-sm">Seja um Vendedor</button>
                     </section>
-                    <h2 class="text-xl font-bold mb-4 flex items-center gap-2"><i class="fa-solid fa-fire text-furyOrange"></i> Produtos</h2>
+                    <h2 class="text-xl font-bold mb-4 flex items-center gap-2"><i class="fa-solid fa-fire text-furyOrange"></i> Produtos & Promoções</h2>
                     <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
                         ${data.products.map(p => `
                             <div class="bg-furyCard border border-furyBorder rounded-xl p-5 flex flex-col justify-between">
                                 <div>
-                                    <div class="h-32 bg-zinc-900 rounded-lg flex items-center justify-center mb-3">
+                                    <div class="h-32 bg-zinc-900 rounded-lg flex items-center justify-center mb-3 relative">
                                         <i class="fa-solid fa-${p.image_type === 'gem' ? 'gem text-furyAccent' : p.image_type === 'gift' ? 'gift text-furyOrange' : 'trophy text-yellow-400'} text-4xl"></i>
+                                        ${p.promo_price > 0 ? `<span class="absolute top-2 right-2 bg-furyOrange text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase">PROMOÇÃO</span>` : ''}
                                     </div>
                                     <span class="text-xs text-gray-500 uppercase font-bold">${p.category}</span>
                                     <h3 class="font-bold text-white text-base mt-1">${p.title}</h3>
                                     <p class="text-xs text-gray-400 mt-1 mb-3">${p.description}</p>
                                 </div>
                                 <div>
-                                    <div class="text-lg font-black text-white mb-3">R$ ${p.price.toFixed(2)}</div>
-                                    <button onclick="buyProduct('${p.title}', ${p.price})" class="w-full bg-furyAccent text-furyBg font-bold py-2 rounded-lg text-sm">Comprar via Pix</button>
+                                    <div class="text-lg font-black text-white mb-3">
+                                        ${p.promo_price > 0 ? `<span class="line-through text-gray-500 text-xs mr-2">R$ ${p.price.toFixed(2)}</span><span class="text-furyAccent">R$ ${p.promo_price.toFixed(2)}</span>` : `R$ ${p.price.toFixed(2)}`}
+                                    </div>
+                                    <button onclick="buyProduct('${p.title}', ${p.promo_price > 0 ? p.promo_price : p.price})" class="w-full bg-furyAccent text-furyBg font-bold py-2 rounded-lg text-sm">Comprar via Pix</button>
                                 </div>
                             </div>
                         `).join('')}
                     </div>
                 `;
+            } else if (page === 'seller-dashboard') {
+                if (currentRole !== 'seller' && currentRole !== 'admin') return showAlert('Apenas vendedores aprovados podem acessar.', false);
+                
+                container.innerHTML = `<div class="text-center py-12"><i class="fa-solid fa-circle-notch fa-spin text-3xl text-furyAccent"></i></div>`;
+                const res = await fetch('/api/seller/my-products', { headers: { 'Authorization': 'Bearer ' + authToken } });
+                const data = await res.json();
+
+                container.innerHTML = `
+                    <div class="max-w-4xl mx-auto">
+                        <div class="flex justify-between items-center mb-6">
+                            <h2 class="text-2xl font-black text-furyAccent"><i class="fa-solid fa-store mr-2"></i> Painel do Vendedor</h2>
+                        </div>
+
+                        <!-- Form de Cadastro de Produto -->
+                        <div class="bg-furyCard border border-furyBorder p-6 rounded-2xl mb-8">
+                            <h3 class="font-bold mb-4 text-white">Cadastrar Novo Item / Promoção</h3>
+                            <form id="createProductForm" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div><label class="block text-xs text-gray-400 mb-1">Título do Produto</label><input type="text" id="prodTitle" required placeholder="Ex: Recarga 500 Diamantes" class="w-full bg-furyBg border border-furyBorder rounded-lg p-2.5 text-sm"></div>
+                                <div><label class="block text-xs text-gray-400 mb-1">Categoria</label>
+                                    <select id="prodCategory" class="w-full bg-furyBg border border-furyBorder rounded-lg p-2.5 text-sm text-white">
+                                        <option>Diamantes</option><option>Gift Cards</option><option>Coaching</option><option>Serviços</option>
+                                    </select>
+                                </div>
+                                <div><label class="block text-xs text-gray-400 mb-1">Preço Normal (R$)</label><input type="number" step="0.01" id="prodPrice" required placeholder="45.00" class="w-full bg-furyBg border border-furyBorder rounded-lg p-2.5 text-sm"></div>
+                                <div><label class="block text-xs text-gray-400 mb-1">Preço Promocional (Opcional)</label><input type="number" step="0.01" id="prodPromoPrice" placeholder="39.90" class="w-full bg-furyBg border border-furyBorder rounded-lg p-2.5 text-sm"></div>
+                                <div class="md:col-span-2"><label class="block text-xs text-gray-400 mb-1">Ícone Exibido</label>
+                                    <select id="prodImageType" class="w-full bg-furyBg border border-furyBorder rounded-lg p-2.5 text-sm text-white">
+                                        <option value="gem">Diamante (Verde)</option><option value="gift">Gift Card (Laranja)</option><option value="trophy">Troféu (Amarelo)</option>
+                                    </select>
+                                </div>
+                                <div class="md:col-span-2"><label class="block text-xs text-gray-400 mb-1">Descrição</label><textarea id="prodDesc" rows="2" required class="w-full bg-furyBg border border-furyBorder rounded-lg p-2.5 text-sm"></textarea></div>
+                                <div class="md:col-span-2"><button type="submit" class="w-full bg-furyAccent text-furyBg font-bold py-3 rounded-lg text-sm">Publicar Anúncio</button></div>
+                            </form>
+                        </div>
+
+                        <!-- Lista de Itens do Vendedor -->
+                        <h3 class="font-bold mb-4 text-white">Seus Produtos Cadastrados</h3>
+                        <div class="space-y-3">
+                            ${data.products.map(p => `
+                                <div class="bg-furyCard border border-furyBorder p-4 rounded-xl flex justify-between items-center text-sm">
+                                    <div>
+                                        <strong class="text-white">${p.title}</strong> (${p.category})
+                                        <div class="text-xs text-gray-400">Preço: R$ ${p.price.toFixed(2)} ${p.promo_price > 0 ? `| <span class="text-furyOrange font-bold">Promo: R$ ${p.promo_price.toFixed(2)}</span>` : ''}</div>
+                                    </div>
+                                    <span class="bg-green-500/20 text-green-400 px-2 py-1 rounded text-xs">Ativo</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+
+                document.getElementById('createProductForm').onsubmit = async (e) => {
+                    e.preventDefault();
+                    const res = await fetch('/api/products/create', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
+                        body: JSON.stringify({
+                            title: document.getElementById('prodTitle').value,
+                            category: document.getElementById('prodCategory').value,
+                            price: document.getElementById('prodPrice').value,
+                            promoPrice: document.getElementById('prodPromoPrice').value,
+                            imageType: document.getElementById('prodImageType').value,
+                            description: document.getElementById('prodDesc').value
+                        })
+                    });
+                    const resData = await res.json();
+                    showAlert(resData.message, resData.success);
+                    if (resData.success) navigate('seller-dashboard');
+                };
             } else if (page === 'login') {
                 container.innerHTML = `
                     <div class="max-w-md mx-auto bg-furyCard border border-furyBorder p-8 rounded-2xl">
@@ -129,14 +205,8 @@
                                 <label class="block text-xs text-gray-400 mb-1">Nome de Usuário</label>
                                 <input type="text" id="inputUsername" class="w-full bg-furyBg border border-furyBorder rounded-lg p-3 text-sm">
                             </div>
-                            <div>
-                                <label class="block text-xs text-gray-400 mb-1">E-mail</label>
-                                <input type="email" id="inputEmail" required class="w-full bg-furyBg border border-furyBorder rounded-lg p-3 text-sm">
-                            </div>
-                            <div>
-                                <label class="block text-xs text-gray-400 mb-1">Senha</label>
-                                <input type="password" id="inputPassword" required class="w-full bg-furyBg border border-furyBorder rounded-lg p-3 text-sm">
-                            </div>
+                            <div><label class="block text-xs text-gray-400 mb-1">E-mail</label><input type="email" id="inputEmail" required class="w-full bg-furyBg border border-furyBorder rounded-lg p-3 text-sm"></div>
+                            <div><label class="block text-xs text-gray-400 mb-1">Senha</label><input type="password" id="inputPassword" required class="w-full bg-furyBg border border-furyBorder rounded-lg p-3 text-sm"></div>
                             <button type="submit" id="authSubmitBtn" class="w-full bg-furyAccent text-furyBg font-bold py-3 rounded-lg text-sm">Entrar</button>
                         </form>
                         <div class="text-center mt-4">
@@ -207,7 +277,7 @@
                         <h2 class="text-2xl font-bold mb-2">Central de Suporte</h2>
                         <form id="ticketForm" class="space-y-4">
                             <div><label class="block text-xs text-gray-400 mb-1">Assunto</label><input type="text" id="tckSubject" required class="w-full bg-furyBg border border-furyBorder rounded-lg p-3 text-sm"></div>
-                            <div><label class="block text-xs text-gray-400 mb-1">Categoria</label><select id="tckCategory" class="w-full bg-furyBg border border-furyBorder rounded-lg p-3 text-sm bg-furyBg"><option>Dúvidas em Compras</option><option>Problemas com Vendedor</option><option>Reembolso</option></select></div>
+                            <div><label class="block text-xs text-gray-400 mb-1">Categoria</label><select id="tckCategory" class="w-full bg-furyBg border border-furyBorder rounded-lg p-3 text-sm"><option>Dúvidas</option><option>Vendas</option><option>Reembolso</option></select></div>
                             <div><label class="block text-xs text-gray-400 mb-1">Mensagem</label><textarea id="tckMessage" required rows="4" class="w-full bg-furyBg border border-furyBorder rounded-lg p-3 text-sm"></textarea></div>
                             <button type="submit" class="w-full bg-furyAccent text-furyBg font-bold py-3 rounded-lg text-sm">Abrir Ticket</button>
                         </form>
@@ -232,7 +302,6 @@
                 if (currentRole !== 'admin') return showAlert('Acesso restrito!', false);
                 const res = await fetch('/api/admin/dashboard', { headers: { 'Authorization': 'Bearer ' + authToken } });
                 const data = await res.json();
-                if (!data.success) return showAlert(data.message, false);
 
                 container.innerHTML = `
                     <h2 class="text-2xl font-black mb-6 text-red-400"><i class="fa-solid fa-user-shield"></i> Painel Admin</h2>
