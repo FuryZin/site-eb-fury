@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const sqlite3 = require('sqlite3').verbose();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -214,9 +215,19 @@ app.get('/api/admin/dashboard', authenticateToken, (req, res) => {
     });
 });
 
-// Servir o Frontend SPA
+// SERVIR FRONTEND COM FALLBACK DE VERIFICAÇÃO
 app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    const indexPath = path.join(__dirname, 'public', 'index.html');
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        res.status(404).send(`
+            <div style="font-family: sans-serif; background: #0a0a0c; color: #fff; padding: 40px; text-align: center;">
+                <h1 style="color: #00ff66;">🔥 Servidor Rodando, mas public/index.html não foi encontrado!</h1>
+                <p>Verifique se a pasta <strong>public</strong> e o arquivo <strong>index.html</strong> foram enviados ao GitHub.</p>
+            </div>
+        `);
+    }
 });
 
 app.listen(PORT, '0.0.0.0', () => {
