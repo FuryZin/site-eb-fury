@@ -32,13 +32,16 @@ db.serialize(() => {
 
     db.run(`CREATE TABLE IF NOT EXISTS products (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        seller_id INTEGER,
         seller_name TEXT,
         title TEXT,
         category TEXT,
         price REAL,
+        promo_price REAL DEFAULT 0,
         description TEXT,
         image_type TEXT DEFAULT 'gem',
-        status TEXT DEFAULT 'active'
+        status TEXT DEFAULT 'active',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
 
     db.run(`CREATE TABLE IF NOT EXISTS orders (
@@ -53,12 +56,14 @@ db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS seller_applications (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         app_code TEXT UNIQUE,
+        user_id INTEGER,
         username TEXT,
         discord_tag TEXT,
         discord_id TEXT,
         products TEXT,
         description TEXT,
-        status TEXT DEFAULT 'pending'
+        status TEXT DEFAULT 'pending',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
 
     db.run(`CREATE TABLE IF NOT EXISTS tickets (
@@ -68,10 +73,11 @@ db.serialize(() => {
         subject TEXT,
         category TEXT,
         message TEXT,
-        status TEXT DEFAULT 'open'
+        status TEXT DEFAULT 'open',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
 
-    // Criar Admin padrão (admin@furymarket.com / admin123)
+    // Admin Padrão (admin@furymarket.com / admin123)
     db.get("SELECT * FROM users WHERE email = 'admin@furymarket.com'", async (err, row) => {
         if (!row) {
             const hash = await bcrypt.hash('admin123', 10);
@@ -79,18 +85,9 @@ db.serialize(() => {
             console.log('👤 Admin criado: admin@furymarket.com / admin123');
         }
     });
-
-    // Produtos Iniciais
-    db.get("SELECT count(*) as count FROM products", (err, row) => {
-        if (row && row.count === 0) {
-            db.run("INSERT INTO products (seller_name, title, category, price, description, image_type) VALUES ('FuryStore', 'Recarga 1060 Diamantes (Via ID)', 'Diamantes', 45.00, 'Entrega via ID oficial.', 'gem')");
-            db.run("INSERT INTO products (seller_name, title, category, price, description, image_type) VALUES ('FuryStore', 'Gift Card R$ 50 Google Play', 'Gift Cards', 48.50, 'Resgate na Play Store.', 'gift')");
-            db.run("INSERT INTO products (seller_name, title, category, price, description, image_type) VALUES ('FuryStore', 'Coaching Mestre 1 hora', 'Coaching', 30.00, 'Treino ao vivo.', 'trophy')");
-        }
-    });
 });
 
-// AUTH MIDDLEWARE
+// MIDDLEWARE DE AUTENTICAÇÃO
 function authenticateToken(req, res, next) {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
@@ -103,7 +100,9 @@ function authenticateToken(req, res, next) {
     });
 }
 
-// ENDPOINTS DA API
+// ==========================================
+// ENDPOINTS DE AUTENTICAÇÃO & PRODUTOS
+// ==========================================
 
 app.post('/api/auth/register', async (req, res) => {
     const { username, email, password } = req.body;
@@ -135,14 +134,69 @@ app.get('/api/products', (req, res) => {
     });
 });
 
+// Criar Produto (Apenas Vendedores e Admins)
+app.post('/api/products/create', authenticateToken, (req, res) => {
+    if (req.user.role !== 'seller' && req.user.role !== 'admin') {
+        return res.status(403).json({ success: false, message: 'Apenas vendedores aprovados podem cadastrar produtos.' });
+    }
+
+    const { title, category, price, promoPrice, description, imageType } = req.body;
+    if (!title || !price || !category) return res.status(400).json({ success: false, message: 'Preencha os campos obrigatórios.' });
+
+    db.run("INSERT INTO products (seller_id, seller_name, title, category, price, promo_price, description, image_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [req.user.id, req.user.username, title, category, parseFloat(price), parseFloat(promoPrice || 0), description, imageType || 'gem'],
+        function(err) {
+            if (err) return res.status(500).json({ success: false, message: 'Erro ao cadastrar produto.' });
+            res.json({ success: true, message: 'Produto/Promoção cadastrado com sucesso!' });
+        }
+    );
+});
+
+// Meus Produtos (Painel do Vendedor)
+app.get('/api/seller/my-products', authenticateToken, (req, res) => {
+    db.all("SELECT * FROM products WHERE seller_id = ? ORDER BY id DESC", [req.user.id], (err, rows) => {
+        res.json({ success: true, products: rows || [] });
+    });
+});
+
+// ==========================================
+// CHECKOUT PIX + DISCORD SALES WEBHOOK
+// ==========================================
+
 app.post('/api/checkout/pix', authenticateToken, (req, res) => {
     const { productTitle, amount } = req.body;
     const orderCode = `FUR-${Math.floor(100000 + Math.random() * 900000)}`;
     const pixKey = process.env.PIX_KEY || 'pix@furymarket.com';
 
     db.run("INSERT INTO orders (order_code, buyer_name, product_title, amount) VALUES (?, ?, ?, ?)",
-        [orderCode, req.user.username, productTitle, parseFloat(amount)], (err) => {
+        [orderCode, req.user.username, productTitle, parseFloat(amount)], async (err) => {
             if (err) return res.status(500).json({ success: false, message: 'Erro ao criar pedido.' });
+
+            // NOTIFICAÇÃO DE VENDA NO DISCORD (WEBHOOK DE VENDAS)
+            const salesWebhook = process.env.DISCORD_SALES_WEBHOOK_URL;
+            if (salesWebhook && salesWebhook.startsWith('http')) {
+                try {
+                    await fetch(salesWebhook, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            embeds: [{
+                                title: `⚡ NOVA VENDA REALIZADA!`,
+                                color: 0x00FF66,
+                                fields: [
+                                    { name: "📦 Produto", value: productTitle, inline: true },
+                                    { name: "💰 Valor", value: `R$ ${parseFloat(amount).toFixed(2)}`, inline: true },
+                                    { name: "👤 Comprador", value: req.user.username, inline: true },
+                                    { name: "🆔 Código do Pedido", value: orderCode, inline: false }
+                                ],
+                                footer: { text: "Fury Market Sales System" },
+                                timestamp: new Date().toISOString()
+                            }]
+                        })
+                    });
+                } catch (e) { console.error('Erro no Webhook de Vendas:', e); }
+            }
+
             res.json({
                 success: true,
                 orderCode,
@@ -150,45 +204,99 @@ app.post('/api/checkout/pix', authenticateToken, (req, res) => {
                 pixKey,
                 pixPayload: `00020126580014BR.GOV.BCB.PIX0136${pixKey}5204000053039865405${amount}5802BR5919FuryMarket6009SAOPAULO62070503***6304E2CA`
             });
-        });
+        }
+    );
 });
+
+// ==========================================
+// SOLICITAÇÃO DE VENDEDOR + BOTÕES INTERATIVOS NO DISCORD
+// ==========================================
 
 app.post('/api/seller/apply', authenticateToken, async (req, res) => {
     const { discordTag, discordId, products, description } = req.body;
     const appCode = `SOL-${Math.floor(100000 + Math.random() * 900000)}`;
 
-    db.run("INSERT INTO seller_applications (app_code, username, discord_tag, discord_id, products, description) VALUES (?, ?, ?, ?, ?, ?)",
-        [appCode, req.user.username, discordTag, discordId, products, description], async function(err) {
+    db.run("INSERT INTO seller_applications (app_code, user_id, username, discord_tag, discord_id, products, description) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [appCode, req.user.id, req.user.username, discordTag, discordId, products, description], async function(err) {
             if (err) return res.status(500).json({ success: false, message: 'Erro ao salvar solicitação.' });
 
             const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
             const roleId = process.env.DISCORD_ROLE_ID;
+            const siteUrl = process.env.SITE_URL || 'http://localhost:3000';
+
             if (webhookUrl && webhookUrl.startsWith('http')) {
                 try {
                     const roleMention = roleId ? `<@&${roleId}>` : '';
+                    const approveUrl = `${siteUrl}/api/admin/action-seller?action=approve&appCode=${appCode}`;
+                    const rejectUrl = `${siteUrl}/api/admin/action-seller?action=reject&appCode=${appCode}`;
+
                     await fetch(webhookUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             content: `🚨 ${roleMention} **NOVA SOLICITAÇÃO DE VENDEDOR!**`,
                             embeds: [{
-                                title: `📄 Solicitação: ${appCode}`,
-                                color: 0x00FF66,
+                                title: `📄 Código da Solicitação: ${appCode}`,
+                                color: 0xFF6600,
                                 fields: [
-                                    { name: "👤 Usuário", value: req.user.username, inline: true },
-                                    { name: "🎮 Discord", value: `${discordTag} (${discordId})`, inline: true },
-                                    { name: "📦 Produtos", value: products, inline: false },
-                                    { name: "📝 Descrição", value: description, inline: false }
+                                    { name: "👤 Usuário da Plataforma", value: req.user.username, inline: true },
+                                    { name: "🎮 Discord", value: `${discordTag} (ID: ${discordId})`, inline: true },
+                                    { name: "📦 Produtos Pretendidos", value: products, inline: false },
+                                    { name: "📝 Descrição da Loja", value: description, inline: false },
+                                    { 
+                                        name: "⚡ AÇÕES DA ADMINISTRAÇÃO (Clique para Executar)", 
+                                        value: `[✅ APROVAR VENDEDOR](${approveUrl}) &nbsp;&nbsp;|&nbsp;&nbsp; [❌ RECUSAR VENDEDOR](${rejectUrl})`, 
+                                        inline: false 
+                                    }
                                 ],
+                                footer: { text: "Clique em um dos botões acima para aprovar ou recusar diretamente pelo Discord." },
                                 timestamp: new Date().toISOString()
                             }]
                         })
                     });
-                } catch (e) { console.error('Erro Webhook:', e); }
+                } catch (e) { console.error('Erro Webhook Discord:', e); }
             }
+
             res.json({ success: true, message: 'Solicitação enviada com sucesso!' });
-        });
+        }
+    );
 });
+
+// AÇÃO DE APROVAR / RECUSAR DIRETO PELO DISCORD (LINK DO BOTÃO)
+app.get('/api/admin/action-seller', (req, res) => {
+    const { action, appCode } = req.query;
+
+    db.get("SELECT * FROM seller_applications WHERE app_code = ?", [appCode], (err, application) => {
+        if (err || !application) {
+            return res.status(404).send('<h1 style="font-family:sans-serif; text-align:center; margin-top:50px;">❌ Solicitação não encontrada!</h1>');
+        }
+
+        if (action === 'approve') {
+            db.run("UPDATE users SET role = 'seller' WHERE id = ?", [application.user_id]);
+            db.run("UPDATE seller_applications SET status = 'approved' WHERE app_code = ?", [appCode]);
+
+            return res.send(`
+                <div style="font-family:sans-serif; background:#0a0a0c; color:#00ff66; padding:50px; text-align:center;">
+                    <h1>✅ VENDEDOR APROVADO COM SUCESSO!</h1>
+                    <p style="color:#fff;">O usuário <strong>${application.username}</strong> agora possui permissão de VENDEDOR na plataforma.</p>
+                </div>
+            `);
+        } else {
+            db.run("UPDATE seller_applications SET status = 'rejected' WHERE app_code = ?", [appCode]);
+
+            return res.send(`
+                <div style="font-family:sans-serif; background:#0a0a0c; color:#ff4444; padding:50px; text-align:center;">
+                    <h1>❌ SOLICITAÇÃO RECUSADA</h1>
+                    <p style="color:#fff;">A solicitação de <strong>${application.username}</strong> foi recusada.</p>
+                </div>
+            `);
+        }
+    });
+});
+
+// ==========================================
+// TICKETS DE SUPORTE & DASHBOARD ADMIN
+// ==========================================
 
 app.post('/api/tickets/create', authenticateToken, (req, res) => {
     const { subject, category, message } = req.body;
@@ -198,7 +306,8 @@ app.post('/api/tickets/create', authenticateToken, (req, res) => {
         [ticketCode, req.user.username, subject, category, message], (err) => {
             if (err) return res.status(500).json({ success: false, message: 'Erro ao abrir ticket.' });
             res.json({ success: true, message: `Ticket ${ticketCode} aberto com sucesso!` });
-        });
+        }
+    );
 });
 
 app.get('/api/admin/dashboard', authenticateToken, (req, res) => {
@@ -215,18 +324,13 @@ app.get('/api/admin/dashboard', authenticateToken, (req, res) => {
     });
 });
 
-// SERVIR FRONTEND COM FALLBACK DE VERIFICAÇÃO
+// ROTA PADRÃO (FRONTEND SPA)
 app.get('*', (req, res) => {
     const indexPath = path.join(__dirname, 'public', 'index.html');
     if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
     } else {
-        res.status(404).send(`
-            <div style="font-family: sans-serif; background: #0a0a0c; color: #fff; padding: 40px; text-align: center;">
-                <h1 style="color: #00ff66;">🔥 Servidor Rodando, mas public/index.html não foi encontrado!</h1>
-                <p>Verifique se a pasta <strong>public</strong> e o arquivo <strong>index.html</strong> foram enviados ao GitHub.</p>
-            </div>
-        `);
+        res.status(404).send('<h1>Erro: public/index.html não foi encontrado!</h1>');
     }
 });
 
