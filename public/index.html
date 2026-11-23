@@ -1,1 +1,274 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fury Market — Marketplace Oficial Free Fire</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        furyBg: '#0a0a0c',
+                        furyCard: '#121216',
+                        furyBorder: '#262630',
+                        furyAccent: '#00ff66',
+                        furyAccentHover: '#00cc52',
+                        furyOrange: '#ff6600',
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-furyBg text-gray-100 font-sans min-h-screen flex flex-col justify-between">
 
+    <header class="bg-furyCard border-b border-furyBorder sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-2 cursor-pointer" onclick="navigate('home')">
+                <i class="fa-solid fa-gamepad text-furyAccent text-3xl"></i>
+                <span class="text-xl font-black text-white">FURY<span class="text-furyAccent">MARKET</span></span>
+            </div>
+            <div class="flex items-center gap-4 text-sm font-semibold">
+                <button onclick="navigate('home')" class="hover:text-furyAccent">Início</button>
+                <button onclick="navigate('seller')" class="hover:text-furyAccent text-furyOrange"><i class="fa-solid fa-store mr-1"></i>Seja Vendedor</button>
+                <button onclick="navigate('tickets')" class="hover:text-furyAccent">Suporte</button>
+                <button id="adminNavBtn" onclick="navigate('admin')" class="hidden text-red-400 hover:text-red-300 font-bold"><i class="fa-solid fa-user-shield mr-1"></i>Admin</button>
+            </div>
+            <div id="authNavArea"></div>
+        </div>
+    </header>
+
+    <div id="globalAlert" class="hidden max-w-7xl mx-auto my-4 px-4">
+        <div id="globalAlertBody" class="p-4 rounded-xl text-center font-bold"></div>
+    </div>
+
+    <main id="appContent" class="max-w-7xl mx-auto px-4 py-8 flex-1 w-full"></main>
+
+    <footer class="bg-furyCard border-t border-furyBorder py-6 text-center text-sm text-gray-400">
+        <div><strong>FURYMARKET &copy; 2026</strong> — Todos os direitos reservados.</div>
+    </footer>
+
+    <script>
+        let currentUser = localStorage.getItem('fury_user');
+        let currentRole = localStorage.getItem('fury_role');
+        let authToken = localStorage.getItem('fury_token');
+
+        function updateNav() {
+            const authArea = document.getElementById('authNavArea');
+            const adminBtn = document.getElementById('adminNavBtn');
+            if (currentRole === 'admin') adminBtn.classList.remove('hidden');
+            else adminBtn.classList.add('hidden');
+
+            if (currentUser) {
+                authArea.innerHTML = `<span class="text-sm font-bold mr-2"><i class="fa-solid fa-user text-furyAccent mr-1"></i>${currentUser}</span>
+                    <button onclick="logout()" class="bg-furyBorder text-red-400 font-bold px-3 py-1.5 rounded-lg text-xs">Sair</button>`;
+            } else {
+                authArea.innerHTML = `<button onclick="navigate('login')" class="bg-furyAccent text-furyBg font-bold px-4 py-2 rounded-lg text-sm">Entrar / Cadastrar</button>`;
+            }
+        }
+
+        function logout() {
+            localStorage.clear();
+            currentUser = null; currentRole = null; authToken = null;
+            updateNav(); navigate('home');
+        }
+
+        function showAlert(msg, success) {
+            const box = document.getElementById('globalAlert');
+            const body = document.getElementById('globalAlertBody');
+            box.classList.remove('hidden');
+            body.className = `p-4 rounded-xl text-center font-bold ${success ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`;
+            body.innerText = msg;
+            setTimeout(() => box.classList.add('hidden'), 4000);
+        }
+
+        async function navigate(page) {
+            const container = document.getElementById('appContent');
+            updateNav();
+
+            if (page === 'home') {
+                container.innerHTML = `<div class="text-center py-12"><i class="fa-solid fa-circle-notch fa-spin text-3xl text-furyAccent"></i></div>`;
+                const res = await fetch('/api/products');
+                const data = await res.json();
+                container.innerHTML = `
+                    <section class="bg-gradient-to-r from-zinc-900 to-furyCard border border-furyBorder rounded-2xl p-8 mb-8">
+                        <span class="bg-furyAccent/10 text-furyAccent text-xs font-bold px-3 py-1 rounded-full">MARKETPLACE GAMER</span>
+                        <h1 class="text-3xl font-black mt-3 mb-2">Compre Diamantes e Serviços para <span class="text-furyAccent">Free Fire</span></h1>
+                        <p class="text-gray-400 text-sm mb-4">Entrega rápida, vendedores verificados e suporte 24h.</p>
+                        <button onclick="navigate('seller')" class="bg-furyAccent text-furyBg font-bold px-6 py-2.5 rounded-xl text-sm">Seja um Vendedor</button>
+                    </section>
+                    <h2 class="text-xl font-bold mb-4 flex items-center gap-2"><i class="fa-solid fa-fire text-furyOrange"></i> Produtos</h2>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                        ${data.products.map(p => `
+                            <div class="bg-furyCard border border-furyBorder rounded-xl p-5 flex flex-col justify-between">
+                                <div>
+                                    <div class="h-32 bg-zinc-900 rounded-lg flex items-center justify-center mb-3">
+                                        <i class="fa-solid fa-${p.image_type === 'gem' ? 'gem text-furyAccent' : p.image_type === 'gift' ? 'gift text-furyOrange' : 'trophy text-yellow-400'} text-4xl"></i>
+                                    </div>
+                                    <span class="text-xs text-gray-500 uppercase font-bold">${p.category}</span>
+                                    <h3 class="font-bold text-white text-base mt-1">${p.title}</h3>
+                                    <p class="text-xs text-gray-400 mt-1 mb-3">${p.description}</p>
+                                </div>
+                                <div>
+                                    <div class="text-lg font-black text-white mb-3">R$ ${p.price.toFixed(2)}</div>
+                                    <button onclick="buyProduct('${p.title}', ${p.price})" class="w-full bg-furyAccent text-furyBg font-bold py-2 rounded-lg text-sm">Comprar via Pix</button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            } else if (page === 'login') {
+                container.innerHTML = `
+                    <div class="max-w-md mx-auto bg-furyCard border border-furyBorder p-8 rounded-2xl">
+                        <h2 class="text-2xl font-black text-center mb-6">Acesse sua Conta</h2>
+                        <form id="authForm" class="space-y-4">
+                            <div id="userField" class="hidden">
+                                <label class="block text-xs text-gray-400 mb-1">Nome de Usuário</label>
+                                <input type="text" id="inputUsername" class="w-full bg-furyBg border border-furyBorder rounded-lg p-3 text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">E-mail</label>
+                                <input type="email" id="inputEmail" required class="w-full bg-furyBg border border-furyBorder rounded-lg p-3 text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 mb-1">Senha</label>
+                                <input type="password" id="inputPassword" required class="w-full bg-furyBg border border-furyBorder rounded-lg p-3 text-sm">
+                            </div>
+                            <button type="submit" id="authSubmitBtn" class="w-full bg-furyAccent text-furyBg font-bold py-3 rounded-lg text-sm">Entrar</button>
+                        </form>
+                        <div class="text-center mt-4">
+                            <button onclick="toggleAuthMode()" id="toggleAuthText" class="text-xs text-furyAccent hover:underline">Não tem conta? Cadastre-se</button>
+                        </div>
+                    </div>
+                `;
+                let isRegistering = false;
+                window.toggleAuthMode = () => {
+                    isRegistering = !isRegistering;
+                    document.getElementById('userField').classList.toggle('hidden', !isRegistering);
+                    document.getElementById('authSubmitBtn').innerText = isRegistering ? 'Criar Conta' : 'Entrar';
+                    document.getElementById('toggleAuthText').innerText = isRegistering ? 'Já tem conta? Faça Login' : 'Não tem conta? Cadastre-se';
+                };
+                document.getElementById('authForm').onsubmit = async (e) => {
+                    e.preventDefault();
+                    const endpoint = isRegistering ? '/api/auth/register' : '/api/auth/login';
+                    const res = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            username: document.getElementById('inputUsername').value,
+                            email: document.getElementById('inputEmail').value,
+                            password: document.getElementById('inputPassword').value
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        localStorage.setItem('fury_token', data.token);
+                        localStorage.setItem('fury_user', data.username);
+                        localStorage.setItem('fury_role', data.role);
+                        currentUser = data.username; currentRole = data.role; authToken = data.token;
+                        showAlert(data.message, true); navigate('home');
+                    } else showAlert(data.message, false);
+                };
+            } else if (page === 'seller') {
+                container.innerHTML = `
+                    <div class="max-w-xl mx-auto bg-furyCard border border-furyBorder p-8 rounded-2xl">
+                        <h2 class="text-2xl font-bold mb-2">Seja um Vendedor Autorizado</h2>
+                        <form id="sellerAppForm" class="space-y-4">
+                            <div><label class="block text-xs text-gray-400 mb-1">Tag Discord</label><input type="text" id="appDiscordTag" required class="w-full bg-furyBg border border-furyBorder rounded-lg p-3 text-sm"></div>
+                            <div><label class="block text-xs text-gray-400 mb-1">ID Discord</label><input type="text" id="appDiscordId" required class="w-full bg-furyBg border border-furyBorder rounded-lg p-3 text-sm"></div>
+                            <div><label class="block text-xs text-gray-400 mb-1">Produtos</label><input type="text" id="appProducts" required class="w-full bg-furyBg border border-furyBorder rounded-lg p-3 text-sm"></div>
+                            <div><label class="block text-xs text-gray-400 mb-1">Descrição</label><textarea id="appDescription" required class="w-full bg-furyBg border border-furyBorder rounded-lg p-3 text-sm" rows="3"></textarea></div>
+                            <button type="submit" class="w-full bg-furyAccent text-furyBg font-bold py-3 rounded-lg text-sm">Enviar para Análise</button>
+                        </form>
+                    </div>
+                `;
+                document.getElementById('sellerAppForm').onsubmit = async (e) => {
+                    e.preventDefault();
+                    if (!authToken) return showAlert('Faça login primeiro!', false);
+                    const res = await fetch('/api/seller/apply', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
+                        body: JSON.stringify({
+                            discordTag: document.getElementById('appDiscordTag').value,
+                            discordId: document.getElementById('appDiscordId').value,
+                            products: document.getElementById('appProducts').value,
+                            description: document.getElementById('appDescription').value
+                        })
+                    });
+                    const data = await res.json();
+                    showAlert(data.message, data.success);
+                };
+            } else if (page === 'tickets') {
+                container.innerHTML = `
+                    <div class="max-w-xl mx-auto bg-furyCard border border-furyBorder p-8 rounded-2xl">
+                        <h2 class="text-2xl font-bold mb-2">Central de Suporte</h2>
+                        <form id="ticketForm" class="space-y-4">
+                            <div><label class="block text-xs text-gray-400 mb-1">Assunto</label><input type="text" id="tckSubject" required class="w-full bg-furyBg border border-furyBorder rounded-lg p-3 text-sm"></div>
+                            <div><label class="block text-xs text-gray-400 mb-1">Categoria</label><select id="tckCategory" class="w-full bg-furyBg border border-furyBorder rounded-lg p-3 text-sm bg-furyBg"><option>Dúvidas em Compras</option><option>Problemas com Vendedor</option><option>Reembolso</option></select></div>
+                            <div><label class="block text-xs text-gray-400 mb-1">Mensagem</label><textarea id="tckMessage" required rows="4" class="w-full bg-furyBg border border-furyBorder rounded-lg p-3 text-sm"></textarea></div>
+                            <button type="submit" class="w-full bg-furyAccent text-furyBg font-bold py-3 rounded-lg text-sm">Abrir Ticket</button>
+                        </form>
+                    </div>
+                `;
+                document.getElementById('ticketForm').onsubmit = async (e) => {
+                    e.preventDefault();
+                    if (!authToken) return showAlert('Faça login primeiro!', false);
+                    const res = await fetch('/api/tickets/create', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
+                        body: JSON.stringify({
+                            subject: document.getElementById('tckSubject').value,
+                            category: document.getElementById('tckCategory').value,
+                            message: document.getElementById('tckMessage').value
+                        })
+                    });
+                    const data = await res.json();
+                    showAlert(data.message, data.success);
+                };
+            } else if (page === 'admin') {
+                if (currentRole !== 'admin') return showAlert('Acesso restrito!', false);
+                const res = await fetch('/api/admin/dashboard', { headers: { 'Authorization': 'Bearer ' + authToken } });
+                const data = await res.json();
+                if (!data.success) return showAlert(data.message, false);
+
+                container.innerHTML = `
+                    <h2 class="text-2xl font-black mb-6 text-red-400"><i class="fa-solid fa-user-shield"></i> Painel Admin</h2>
+                    <div class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-8">
+                        <div class="bg-furyCard border border-furyBorder p-4 rounded-xl"><span class="text-xs text-gray-400">Usuários</span><div class="text-2xl font-black">${data.users.length}</div></div>
+                        <div class="bg-furyCard border border-furyBorder p-4 rounded-xl"><span class="text-xs text-gray-400">Solicitações Vendedor</span><div class="text-2xl font-black text-furyOrange">${data.apps.length}</div></div>
+                        <div class="bg-furyCard border border-furyBorder p-4 rounded-xl"><span class="text-xs text-gray-400">Pedidos</span><div class="text-2xl font-black text-furyAccent">${data.orders.length}</div></div>
+                        <div class="bg-furyCard border border-furyBorder p-4 rounded-xl"><span class="text-xs text-gray-400">Tickets</span><div class="text-2xl font-black text-yellow-400">${data.tickets.length}</div></div>
+                    </div>
+                `;
+            }
+        }
+
+        async function buyProduct(title, price) {
+            if (!authToken) return showAlert('Faça login para comprar!', false);
+            const res = await fetch('/api/checkout/pix', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
+                body: JSON.stringify({ productTitle: title, amount: price })
+            });
+            const data = await res.json();
+            if (data.success) {
+                document.getElementById('appContent').innerHTML = `
+                    <div class="max-w-md mx-auto bg-furyCard border border-furyBorder p-8 rounded-2xl text-center">
+                        <i class="fa-solid fa-qrcode text-5xl text-furyAccent mb-4"></i>
+                        <h2 class="text-xl font-bold mb-1">Pagamento Pix</h2>
+                        <p class="text-xs text-gray-400 mb-4">Pedido ${data.orderCode} • Total: R$ ${parseFloat(data.amount).toFixed(2)}</p>
+                        <div class="bg-furyBg border border-furyBorder p-3 rounded-lg text-xs break-all font-mono mb-4">${data.pixPayload}</div>
+                        <p class="text-xs text-gray-400 mb-6">Chave: <strong>${data.pixKey}</strong></p>
+                        <button onclick="navigate('home')" class="bg-furyAccent text-furyBg font-bold px-6 py-2 rounded-lg text-sm">Concluir</button>
+                    </div>
+                `;
+            }
+        }
+
+        navigate('home');
+    </script>
+</body>
+</html>
