@@ -9,6 +9,7 @@ const jwt = require('jsonwebtoken');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'fury_secret_key_2026';
+const OWNER_SECRET_KEY = process.env.OWNER_SECRET_KEY || 'DONO123456';
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -76,18 +77,9 @@ db.serialize(() => {
         status TEXT DEFAULT 'open',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
-
-    // Admin Padrão (admin@furymarket.com / admin123)
-    db.get("SELECT * FROM users WHERE email = 'admin@furymarket.com'", async (err, row) => {
-        if (!row) {
-            const hash = await bcrypt.hash('admin123', 10);
-            db.run("INSERT INTO users (username, email, password, role) VALUES ('Admin', 'admin@furymarket.com', ?, 'admin')", [hash]);
-            console.log('👤 Admin criado: admin@furymarket.com / admin123');
-        }
-    });
 });
 
-// MIDDLEWARE DE AUTENTICAÇÃO
+// AUTH MIDDLEWARE
 function authenticateToken(req, res, next) {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
@@ -101,32 +93,59 @@ function authenticateToken(req, res, next) {
 }
 
 // ==========================================
-// ENDPOINTS DE AUTENTICAÇÃO & PRODUTOS
+// AUTENTICAÇÃO (MEMBROS E DONOS)
 // ==========================================
 
+// Registro (Normal ou Dono)
 app.post('/api/auth/register', async (req, res) => {
-    const { username, email, password } = req.body;
+    const { username, email, password, isOwner, ownerSecret } = req.body;
     if (!username || !email || !password) return res.status(400).json({ success: false, message: 'Preencha todos os campos!' });
 
+    let userRole = 'user';
+
+    // Se marcou a opção Dono, valida a senha mestra
+    if (isOwner) {
+        if (ownerSecret !== OWNER_SECRET_KEY) {
+            return res.status(403).json({ success: false, message: 'Senha Mestra de Dono incorreta!' });
+        }
+        userRole = 'admin';
+    }
+
     const hash = await bcrypt.hash(password, 10);
-    db.run("INSERT INTO users (username, email, password) VALUES (?, ?, ?)", [username, email, hash], function(err) {
+    db.run("INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)", [username, email, hash, userRole], function(err) {
         if (err) return res.status(400).json({ success: false, message: 'Usuário ou E-mail já cadastrado.' });
-        const token = jwt.sign({ id: this.lastID, username, role: 'user' }, JWT_SECRET, { expiresIn: '7d' });
-        res.json({ success: true, message: 'Conta criada!', token, username, role: 'user' });
+        const token = jwt.sign({ id: this.lastID, username, role: userRole }, JWT_SECRET, { expiresIn: '7d' });
+        res.json({ success: true, message: isOwner ? 'Conta de DONO criada com sucesso!' : 'Conta criada com sucesso!', token, username, role: userRole });
     });
 });
 
+// Login (Normal ou Dono)
 app.post('/api/auth/login', (req, res) => {
-    const { email, password } = req.body;
+    const { email, password, isOwner, ownerSecret } = req.body;
     db.get("SELECT * FROM users WHERE email = ?", [email], async (err, user) => {
         if (err || !user) return res.status(400).json({ success: false, message: 'E-mail ou senha incorretos.' });
         const validPass = await bcrypt.compare(password, user.password);
         if (!validPass) return res.status(400).json({ success: false, message: 'E-mail ou senha incorretos.' });
 
-        const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
-        res.json({ success: true, message: 'Login realizado!', token, username: user.username, role: user.role });
+        let finalRole = user.role;
+
+        // Se estiver logando como Dono, valida a senha de dono e atualiza o cargo se necessário
+        if (isOwner) {
+            if (ownerSecret !== OWNER_SECRET_KEY) {
+                return res.status(403).json({ success: false, message: 'Senha Mestra de Dono incorreta!' });
+            }
+            finalRole = 'admin';
+            db.run("UPDATE users SET role = 'admin' WHERE id = ?", [user.id]);
+        }
+
+        const token = jwt.sign({ id: user.id, username: user.username, role: finalRole }, JWT_SECRET, { expiresIn: '7d' });
+        res.json({ success: true, message: 'Login realizado!', token, username: user.username, role: finalRole });
     });
 });
+
+// ==========================================
+// PRODUTOS & LOJA DO VENDEDOR
+// ==========================================
 
 app.get('/api/products', (req, res) => {
     db.all("SELECT * FROM products WHERE status = 'active' ORDER BY id DESC", [], (err, rows) => {
@@ -134,7 +153,6 @@ app.get('/api/products', (req, res) => {
     });
 });
 
-// Criar Produto (Apenas Vendedores e Admins)
 app.post('/api/products/create', authenticateToken, (req, res) => {
     if (req.user.role !== 'seller' && req.user.role !== 'admin') {
         return res.status(403).json({ success: false, message: 'Apenas vendedores aprovados podem cadastrar produtos.' });
@@ -152,7 +170,6 @@ app.post('/api/products/create', authenticateToken, (req, res) => {
     );
 });
 
-// Meus Produtos (Painel do Vendedor)
 app.get('/api/seller/my-products', authenticateToken, (req, res) => {
     db.all("SELECT * FROM products WHERE seller_id = ? ORDER BY id DESC", [req.user.id], (err, rows) => {
         res.json({ success: true, products: rows || [] });
@@ -172,7 +189,6 @@ app.post('/api/checkout/pix', authenticateToken, (req, res) => {
         [orderCode, req.user.username, productTitle, parseFloat(amount)], async (err) => {
             if (err) return res.status(500).json({ success: false, message: 'Erro ao criar pedido.' });
 
-            // NOTIFICAÇÃO DE VENDA NO DISCORD (WEBHOOK DE VENDAS)
             const salesWebhook = process.env.DISCORD_SALES_WEBHOOK_URL;
             if (salesWebhook && salesWebhook.startsWith('http')) {
                 try {
@@ -187,14 +203,13 @@ app.post('/api/checkout/pix', authenticateToken, (req, res) => {
                                     { name: "📦 Produto", value: productTitle, inline: true },
                                     { name: "💰 Valor", value: `R$ ${parseFloat(amount).toFixed(2)}`, inline: true },
                                     { name: "👤 Comprador", value: req.user.username, inline: true },
-                                    { name: "🆔 Código do Pedido", value: orderCode, inline: false }
+                                    { name: "🆔 Pedido", value: orderCode, inline: false }
                                 ],
-                                footer: { text: "Fury Market Sales System" },
                                 timestamp: new Date().toISOString()
                             }]
                         })
                     });
-                } catch (e) { console.error('Erro no Webhook de Vendas:', e); }
+                } catch (e) { console.error('Erro Webhook Vendas:', e); }
             }
 
             res.json({
@@ -209,7 +224,7 @@ app.post('/api/checkout/pix', authenticateToken, (req, res) => {
 });
 
 // ==========================================
-// SOLICITAÇÃO DE VENDEDOR + BOTÕES INTERATIVOS NO DISCORD
+// SOLICITAÇÃO DE VENDEDOR + DISCORD NOTIFY
 // ==========================================
 
 app.post('/api/seller/apply', authenticateToken, async (req, res) => {
@@ -222,34 +237,25 @@ app.post('/api/seller/apply', authenticateToken, async (req, res) => {
 
             const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
             const roleId = process.env.DISCORD_ROLE_ID;
-            const siteUrl = process.env.SITE_URL || 'http://localhost:3000';
 
             if (webhookUrl && webhookUrl.startsWith('http')) {
                 try {
                     const roleMention = roleId ? `<@&${roleId}>` : '';
-                    const approveUrl = `${siteUrl}/api/admin/action-seller?action=approve&appCode=${appCode}`;
-                    const rejectUrl = `${siteUrl}/api/admin/action-seller?action=reject&appCode=${appCode}`;
-
                     await fetch(webhookUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             content: `🚨 ${roleMention} **NOVA SOLICITAÇÃO DE VENDEDOR!**`,
                             embeds: [{
-                                title: `📄 Código da Solicitação: ${appCode}`,
+                                title: `📄 Código: ${appCode}`,
                                 color: 0xFF6600,
                                 fields: [
-                                    { name: "👤 Usuário da Plataforma", value: req.user.username, inline: true },
-                                    { name: "🎮 Discord", value: `${discordTag} (ID: ${discordId})`, inline: true },
+                                    { name: "👤 Usuário", value: req.user.username, inline: true },
+                                    { name: "🎮 Discord", value: `${discordTag} (${discordId})`, inline: true },
                                     { name: "📦 Produtos Pretendidos", value: products, inline: false },
-                                    { name: "📝 Descrição da Loja", value: description, inline: false },
-                                    { 
-                                        name: "⚡ AÇÕES DA ADMINISTRAÇÃO (Clique para Executar)", 
-                                        value: `[✅ APROVAR VENDEDOR](${approveUrl}) &nbsp;&nbsp;|&nbsp;&nbsp; [❌ RECUSAR VENDEDOR](${rejectUrl})`, 
-                                        inline: false 
-                                    }
+                                    { name: "📝 Descrição", value: description, inline: false },
+                                    { name: "⚙️ Ação do Dono", value: "Acesse o Painel Admin do site para **Aceitar** ou **Recusar** esta solicitação.", inline: false }
                                 ],
-                                footer: { text: "Clique em um dos botões acima para aprovar ou recusar diretamente pelo Discord." },
                                 timestamp: new Date().toISOString()
                             }]
                         })
@@ -257,47 +263,55 @@ app.post('/api/seller/apply', authenticateToken, async (req, res) => {
                 } catch (e) { console.error('Erro Webhook Discord:', e); }
             }
 
-            res.json({ success: true, message: 'Solicitação enviada com sucesso!' });
+            res.json({ success: true, message: 'Solicitação enviada! Aguarde a aprovação do Dono pelo painel.' });
         }
     );
 });
 
-// AÇÃO DE APROVAR / RECUSAR DIRETO PELO DISCORD (LINK DO BOTÃO)
-app.get('/api/admin/action-seller', (req, res) => {
-    const { action, appCode } = req.query;
+// ==========================================
+// PAINEL ADMIN: APROVAR OU RECUSAR NO SITE
+// ==========================================
 
-    db.get("SELECT * FROM seller_applications WHERE app_code = ?", [appCode], (err, application) => {
-        if (err || !application) {
-            return res.status(404).send('<h1 style="font-family:sans-serif; text-align:center; margin-top:50px;">❌ Solicitação não encontrada!</h1>');
-        }
+app.get('/api/admin/dashboard', authenticateToken, (req, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ success: false, message: 'Acesso negado.' });
 
-        if (action === 'approve') {
-            db.run("UPDATE users SET role = 'seller' WHERE id = ?", [application.user_id]);
-            db.run("UPDATE seller_applications SET status = 'approved' WHERE app_code = ?", [appCode]);
-
-            return res.send(`
-                <div style="font-family:sans-serif; background:#0a0a0c; color:#00ff66; padding:50px; text-align:center;">
-                    <h1>✅ VENDEDOR APROVADO COM SUCESSO!</h1>
-                    <p style="color:#fff;">O usuário <strong>${application.username}</strong> agora possui permissão de VENDEDOR na plataforma.</p>
-                </div>
-            `);
-        } else {
-            db.run("UPDATE seller_applications SET status = 'rejected' WHERE app_code = ?", [appCode]);
-
-            return res.send(`
-                <div style="font-family:sans-serif; background:#0a0a0c; color:#ff4444; padding:50px; text-align:center;">
-                    <h1>❌ SOLICITAÇÃO RECUSADA</h1>
-                    <p style="color:#fff;">A solicitação de <strong>${application.username}</strong> foi recusada.</p>
-                </div>
-            `);
-        }
+    db.all("SELECT * FROM users", [], (err, users) => {
+        db.all("SELECT * FROM seller_applications ORDER BY id DESC", [], (err, apps) => {
+            db.all("SELECT * FROM orders ORDER BY id DESC", [], (err, orders) => {
+                db.all("SELECT * FROM tickets ORDER BY id DESC", [], (err, tickets) => {
+                    res.json({ success: true, users: users || [], apps: apps || [], orders: orders || [], tickets: tickets || [] });
+                });
+            });
+        });
     });
 });
 
-// ==========================================
-// TICKETS DE SUPORTE & DASHBOARD ADMIN
-// ==========================================
+// Aceitar Vendedor pelo Painel do Site
+app.post('/api/admin/approve-seller', authenticateToken, (req, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ success: false, message: 'Acesso negado.' });
+    const { appId, userId } = req.body;
 
+    db.run("UPDATE users SET role = 'seller' WHERE id = ?", [userId], (err) => {
+        if (err) return res.status(500).json({ success: false, message: 'Erro ao promover usuário.' });
+        
+        db.run("UPDATE seller_applications SET status = 'approved' WHERE id = ?", [appId], () => {
+            res.json({ success: true, message: 'Vendedor aprovado com sucesso!' });
+        });
+    });
+});
+
+// Recusar Vendedor pelo Painel do Site
+app.post('/api/admin/reject-seller', authenticateToken, (req, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ success: false, message: 'Acesso negado.' });
+    const { appId } = req.body;
+
+    db.run("UPDATE seller_applications SET status = 'rejected' WHERE id = ?", [appId], (err) => {
+        if (err) return res.status(500).json({ success: false, message: 'Erro ao recusar solicitação.' });
+        res.json({ success: true, message: 'Solicitação recusada.' });
+    });
+});
+
+// TICKETS DE SUPORTE
 app.post('/api/tickets/create', authenticateToken, (req, res) => {
     const { subject, category, message } = req.body;
     const ticketCode = `TCK-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -310,27 +324,13 @@ app.post('/api/tickets/create', authenticateToken, (req, res) => {
     );
 });
 
-app.get('/api/admin/dashboard', authenticateToken, (req, res) => {
-    if (req.user.role !== 'admin') return res.status(403).json({ success: false, message: 'Acesso negado.' });
-
-    db.all("SELECT * FROM users", [], (err, users) => {
-        db.all("SELECT * FROM seller_applications", [], (err, apps) => {
-            db.all("SELECT * FROM orders", [], (err, orders) => {
-                db.all("SELECT * FROM tickets", [], (err, tickets) => {
-                    res.json({ success: true, users: users || [], apps: apps || [], orders: orders || [], tickets: tickets || [] });
-                });
-            });
-        });
-    });
-});
-
-// ROTA PADRÃO (FRONTEND SPA)
+// SERVIR FRONTEND (SPA)
 app.get('*', (req, res) => {
     const indexPath = path.join(__dirname, 'public', 'index.html');
     if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
     } else {
-        res.status(404).send('<h1>Erro: public/index.html não foi encontrado!</h1>');
+        res.status(404).send('<h1>Erro: public/index.html não encontrado!</h1>');
     }
 });
 
