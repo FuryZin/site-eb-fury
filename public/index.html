@@ -37,7 +37,7 @@
                 <button id="sellerDashNavBtn" onclick="navigate('seller-dashboard')" class="hidden text-furyAccent font-bold"><i class="fa-solid fa-box-open mr-1"></i>Painel do Vendedor</button>
                 <button onclick="navigate('seller')" class="hover:text-furyAccent text-furyOrange"><i class="fa-solid fa-store mr-1"></i>Seja Vendedor</button>
                 <button onclick="navigate('tickets')" class="hover:text-furyAccent">Suporte</button>
-                <button id="adminNavBtn" onclick="navigate('admin')" class="hidden text-red-400 hover:text-red-300 font-bold"><i class="fa-solid fa-user-shield mr-1"></i>Admin</button>
+                <button id="adminNavBtn" onclick="navigate('admin')" class="hidden text-red-400 hover:text-red-300 font-bold"><i class="fa-solid fa-user-shield mr-1"></i>Painel do Dono</button>
             </div>
             <div id="authNavArea"></div>
         </div>
@@ -67,7 +67,7 @@
             if (currentRole === 'seller' || currentRole === 'admin') sellerBtn.classList.remove('hidden'); else sellerBtn.classList.add('hidden');
 
             if (currentUser) {
-                authArea.innerHTML = `<span class="text-sm font-bold mr-2"><i class="fa-solid fa-user text-furyAccent mr-1"></i>${currentUser} (${currentRole})</span>
+                authArea.innerHTML = `<span class="text-sm font-bold mr-2"><i class="fa-solid fa-user ${currentRole === 'admin' ? 'text-red-400' : 'text-furyAccent'} mr-1"></i>${currentUser} ${currentRole === 'admin' ? '(DONO)' : currentRole === 'seller' ? '(VENDEDOR)' : ''}</span>
                     <button onclick="logout()" class="bg-furyBorder text-red-400 font-bold px-3 py-1.5 rounded-lg text-xs">Sair</button>`;
             } else {
                 authArea.innerHTML = `<button onclick="navigate('login')" class="bg-furyAccent text-furyBg font-bold px-4 py-2 rounded-lg text-sm">Entrar / Cadastrar</button>`;
@@ -127,53 +127,96 @@
                         `).join('')}
                     </div>
                 `;
+            } else if (page === 'login') {
+                container.innerHTML = `
+                    <div class="max-w-md mx-auto bg-furyCard border border-furyBorder p-8 rounded-2xl">
+                        <h2 class="text-2xl font-black text-center mb-6">Acesse sua Conta</h2>
+                        <form id="authForm" class="space-y-4">
+                            <div id="userField" class="hidden">
+                                <label class="block text-xs text-gray-400 mb-1">Nome de Usuário</label>
+                                <input type="text" id="inputUsername" class="w-full bg-furyBg border border-furyBorder rounded-lg p-3 text-sm">
+                            </div>
+                            <div><label class="block text-xs text-gray-400 mb-1">E-mail</label><input type="email" id="inputEmail" required class="w-full bg-furyBg border border-furyBorder rounded-lg p-3 text-sm"></div>
+                            <div><label class="block text-xs text-gray-400 mb-1">Senha</label><input type="password" id="inputPassword" required class="w-full bg-furyBg border border-furyBorder rounded-lg p-3 text-sm"></div>
+                            
+                            <!-- Checkbox / Opção de Dono -->
+                            <div class="bg-furyBg border border-furyBorder p-3 rounded-lg flex items-center justify-between">
+                                <label for="isOwnerCheck" class="text-xs font-bold text-red-400 cursor-pointer flex items-center gap-2">
+                                    <i class="fa-solid fa-crown"></i> Entrar / Cadastrar como DONO
+                                </label>
+                                <input type="checkbox" id="isOwnerCheck" class="w-4 h-4 accent-red-500 cursor-pointer" onchange="toggleOwnerField()">
+                            </div>
+
+                            <div id="ownerField" class="hidden">
+                                <label class="block text-xs text-red-400 mb-1 font-bold">Senha Mestra dos Donos</label>
+                                <input type="password" id="ownerSecret" placeholder="Digite a senha mestra de dono" class="w-full bg-furyBg border border-red-500/50 rounded-lg p-3 text-sm">
+                            </div>
+
+                            <button type="submit" id="authSubmitBtn" class="w-full bg-furyAccent text-furyBg font-bold py-3 rounded-lg text-sm">Entrar</button>
+                        </form>
+                        <div class="text-center mt-4">
+                            <button onclick="toggleAuthMode()" id="toggleAuthText" class="text-xs text-furyAccent hover:underline">Não tem conta? Cadastre-se</button>
+                        </div>
+                    </div>
+                `;
+
+                let isRegistering = false;
+                window.toggleAuthMode = () => {
+                    isRegistering = !isRegistering;
+                    document.getElementById('userField').classList.toggle('hidden', !isRegistering);
+                    document.getElementById('authSubmitBtn').innerText = isRegistering ? 'Criar Conta' : 'Entrar';
+                    document.getElementById('toggleAuthText').innerText = isRegistering ? 'Já tem conta? Faça Login' : 'Não tem conta? Cadastre-se';
+                };
+
+                window.toggleOwnerField = () => {
+                    const isChecked = document.getElementById('isOwnerCheck').checked;
+                    document.getElementById('ownerField').classList.toggle('hidden', !isChecked);
+                };
+
+                document.getElementById('authForm').onsubmit = async (e) => {
+                    e.preventDefault();
+                    const endpoint = isRegistering ? '/api/auth/register' : '/api/auth/login';
+                    const payload = {
+                        username: document.getElementById('inputUsername').value,
+                        email: document.getElementById('inputEmail').value,
+                        password: document.getElementById('inputPassword').value,
+                        isOwner: document.getElementById('isOwnerCheck').checked,
+                        ownerSecret: document.getElementById('ownerSecret').value
+                    };
+
+                    const res = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        localStorage.setItem('fury_token', data.token);
+                        localStorage.setItem('fury_user', data.username);
+                        localStorage.setItem('fury_role', data.role);
+                        currentUser = data.username; currentRole = data.role; authToken = data.token;
+                        showAlert(data.message, true); navigate('home');
+                    } else showAlert(data.message, false);
+                };
             } else if (page === 'seller-dashboard') {
-                if (currentRole !== 'seller' && currentRole !== 'admin') return showAlert('Apenas vendedores aprovados podem acessar.', false);
-                
-                container.innerHTML = `<div class="text-center py-12"><i class="fa-solid fa-circle-notch fa-spin text-3xl text-furyAccent"></i></div>`;
+                if (currentRole !== 'seller' && currentRole !== 'admin') return showAlert('Apenas vendedores podem acessar.', false);
                 const res = await fetch('/api/seller/my-products', { headers: { 'Authorization': 'Bearer ' + authToken } });
                 const data = await res.json();
 
                 container.innerHTML = `
                     <div class="max-w-4xl mx-auto">
-                        <div class="flex justify-between items-center mb-6">
-                            <h2 class="text-2xl font-black text-furyAccent"><i class="fa-solid fa-store mr-2"></i> Painel do Vendedor</h2>
-                        </div>
-
-                        <!-- Form de Cadastro de Produto -->
+                        <h2 class="text-2xl font-black text-furyAccent mb-6"><i class="fa-solid fa-store mr-2"></i> Painel do Vendedor</h2>
                         <div class="bg-furyCard border border-furyBorder p-6 rounded-2xl mb-8">
-                            <h3 class="font-bold mb-4 text-white">Cadastrar Novo Item / Promoção</h3>
+                            <h3 class="font-bold mb-4 text-white">Cadastrar Item / Promoção</h3>
                             <form id="createProductForm" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div><label class="block text-xs text-gray-400 mb-1">Título do Produto</label><input type="text" id="prodTitle" required placeholder="Ex: Recarga 500 Diamantes" class="w-full bg-furyBg border border-furyBorder rounded-lg p-2.5 text-sm"></div>
-                                <div><label class="block text-xs text-gray-400 mb-1">Categoria</label>
-                                    <select id="prodCategory" class="w-full bg-furyBg border border-furyBorder rounded-lg p-2.5 text-sm text-white">
-                                        <option>Diamantes</option><option>Gift Cards</option><option>Coaching</option><option>Serviços</option>
-                                    </select>
-                                </div>
-                                <div><label class="block text-xs text-gray-400 mb-1">Preço Normal (R$)</label><input type="number" step="0.01" id="prodPrice" required placeholder="45.00" class="w-full bg-furyBg border border-furyBorder rounded-lg p-2.5 text-sm"></div>
-                                <div><label class="block text-xs text-gray-400 mb-1">Preço Promocional (Opcional)</label><input type="number" step="0.01" id="prodPromoPrice" placeholder="39.90" class="w-full bg-furyBg border border-furyBorder rounded-lg p-2.5 text-sm"></div>
-                                <div class="md:col-span-2"><label class="block text-xs text-gray-400 mb-1">Ícone Exibido</label>
-                                    <select id="prodImageType" class="w-full bg-furyBg border border-furyBorder rounded-lg p-2.5 text-sm text-white">
-                                        <option value="gem">Diamante (Verde)</option><option value="gift">Gift Card (Laranja)</option><option value="trophy">Troféu (Amarelo)</option>
-                                    </select>
-                                </div>
+                                <div><label class="block text-xs text-gray-400 mb-1">Título</label><input type="text" id="prodTitle" required placeholder="Ex: 500 Diamantes" class="w-full bg-furyBg border border-furyBorder rounded-lg p-2.5 text-sm"></div>
+                                <div><label class="block text-xs text-gray-400 mb-1">Categoria</label><select id="prodCategory" class="w-full bg-furyBg border border-furyBorder rounded-lg p-2.5 text-sm"><option>Diamantes</option><option>Gift Cards</option><option>Coaching</option><option>Serviços</option></select></div>
+                                <div><label class="block text-xs text-gray-400 mb-1">Preço Normal (R$)</label><input type="number" step="0.01" id="prodPrice" required class="w-full bg-furyBg border border-furyBorder rounded-lg p-2.5 text-sm"></div>
+                                <div><label class="block text-xs text-gray-400 mb-1">Preço Promocional (R$)</label><input type="number" step="0.01" id="prodPromoPrice" class="w-full bg-furyBg border border-furyBorder rounded-lg p-2.5 text-sm"></div>
+                                <div class="md:col-span-2"><label class="block text-xs text-gray-400 mb-1">Ícone</label><select id="prodImageType" class="w-full bg-furyBg border border-furyBorder rounded-lg p-2.5 text-sm"><option value="gem">Diamante</option><option value="gift">Gift Card</option><option value="trophy">Coaching</option></select></div>
                                 <div class="md:col-span-2"><label class="block text-xs text-gray-400 mb-1">Descrição</label><textarea id="prodDesc" rows="2" required class="w-full bg-furyBg border border-furyBorder rounded-lg p-2.5 text-sm"></textarea></div>
-                                <div class="md:col-span-2"><button type="submit" class="w-full bg-furyAccent text-furyBg font-bold py-3 rounded-lg text-sm">Publicar Anúncio</button></div>
+                                <div class="md:col-span-2"><button type="submit" class="w-full bg-furyAccent text-furyBg font-bold py-3 rounded-lg text-sm">Publicar Produto</button></div>
                             </form>
-                        </div>
-
-                        <!-- Lista de Itens do Vendedor -->
-                        <h3 class="font-bold mb-4 text-white">Seus Produtos Cadastrados</h3>
-                        <div class="space-y-3">
-                            ${data.products.map(p => `
-                                <div class="bg-furyCard border border-furyBorder p-4 rounded-xl flex justify-between items-center text-sm">
-                                    <div>
-                                        <strong class="text-white">${p.title}</strong> (${p.category})
-                                        <div class="text-xs text-gray-400">Preço: R$ ${p.price.toFixed(2)} ${p.promo_price > 0 ? `| <span class="text-furyOrange font-bold">Promo: R$ ${p.promo_price.toFixed(2)}</span>` : ''}</div>
-                                    </div>
-                                    <span class="bg-green-500/20 text-green-400 px-2 py-1 rounded text-xs">Ativo</span>
-                                </div>
-                            `).join('')}
                         </div>
                     </div>
                 `;
@@ -195,52 +238,6 @@
                     const resData = await res.json();
                     showAlert(resData.message, resData.success);
                     if (resData.success) navigate('seller-dashboard');
-                };
-            } else if (page === 'login') {
-                container.innerHTML = `
-                    <div class="max-w-md mx-auto bg-furyCard border border-furyBorder p-8 rounded-2xl">
-                        <h2 class="text-2xl font-black text-center mb-6">Acesse sua Conta</h2>
-                        <form id="authForm" class="space-y-4">
-                            <div id="userField" class="hidden">
-                                <label class="block text-xs text-gray-400 mb-1">Nome de Usuário</label>
-                                <input type="text" id="inputUsername" class="w-full bg-furyBg border border-furyBorder rounded-lg p-3 text-sm">
-                            </div>
-                            <div><label class="block text-xs text-gray-400 mb-1">E-mail</label><input type="email" id="inputEmail" required class="w-full bg-furyBg border border-furyBorder rounded-lg p-3 text-sm"></div>
-                            <div><label class="block text-xs text-gray-400 mb-1">Senha</label><input type="password" id="inputPassword" required class="w-full bg-furyBg border border-furyBorder rounded-lg p-3 text-sm"></div>
-                            <button type="submit" id="authSubmitBtn" class="w-full bg-furyAccent text-furyBg font-bold py-3 rounded-lg text-sm">Entrar</button>
-                        </form>
-                        <div class="text-center mt-4">
-                            <button onclick="toggleAuthMode()" id="toggleAuthText" class="text-xs text-furyAccent hover:underline">Não tem conta? Cadastre-se</button>
-                        </div>
-                    </div>
-                `;
-                let isRegistering = false;
-                window.toggleAuthMode = () => {
-                    isRegistering = !isRegistering;
-                    document.getElementById('userField').classList.toggle('hidden', !isRegistering);
-                    document.getElementById('authSubmitBtn').innerText = isRegistering ? 'Criar Conta' : 'Entrar';
-                    document.getElementById('toggleAuthText').innerText = isRegistering ? 'Já tem conta? Faça Login' : 'Não tem conta? Cadastre-se';
-                };
-                document.getElementById('authForm').onsubmit = async (e) => {
-                    e.preventDefault();
-                    const endpoint = isRegistering ? '/api/auth/register' : '/api/auth/login';
-                    const res = await fetch(endpoint, {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({
-                            username: document.getElementById('inputUsername').value,
-                            email: document.getElementById('inputEmail').value,
-                            password: document.getElementById('inputPassword').value
-                        })
-                    });
-                    const data = await res.json();
-                    if (data.success) {
-                        localStorage.setItem('fury_token', data.token);
-                        localStorage.setItem('fury_user', data.username);
-                        localStorage.setItem('fury_role', data.role);
-                        currentUser = data.username; currentRole = data.role; authToken = data.token;
-                        showAlert(data.message, true); navigate('home');
-                    } else showAlert(data.message, false);
                 };
             } else if (page === 'seller') {
                 container.innerHTML = `
@@ -299,20 +296,67 @@
                     showAlert(data.message, data.success);
                 };
             } else if (page === 'admin') {
-                if (currentRole !== 'admin') return showAlert('Acesso restrito!', false);
+                if (currentRole !== 'admin') return showAlert('Acesso restrito ao Dono!', false);
                 const res = await fetch('/api/admin/dashboard', { headers: { 'Authorization': 'Bearer ' + authToken } });
                 const data = await res.json();
 
                 container.innerHTML = `
-                    <h2 class="text-2xl font-black mb-6 text-red-400"><i class="fa-solid fa-user-shield"></i> Painel Admin</h2>
+                    <h2 class="text-2xl font-black mb-6 text-red-400 flex items-center gap-2"><i class="fa-solid fa-crown"></i> Painel do Dono</h2>
+                    
                     <div class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-8">
                         <div class="bg-furyCard border border-furyBorder p-4 rounded-xl"><span class="text-xs text-gray-400">Usuários</span><div class="text-2xl font-black">${data.users.length}</div></div>
                         <div class="bg-furyCard border border-furyBorder p-4 rounded-xl"><span class="text-xs text-gray-400">Solicitações Vendedor</span><div class="text-2xl font-black text-furyOrange">${data.apps.length}</div></div>
-                        <div class="bg-furyCard border border-furyBorder p-4 rounded-xl"><span class="text-xs text-gray-400">Pedidos</span><div class="text-2xl font-black text-furyAccent">${data.orders.length}</div></div>
-                        <div class="bg-furyCard border border-furyBorder p-4 rounded-xl"><span class="text-xs text-gray-400">Tickets</span><div class="text-2xl font-black text-yellow-400">${data.tickets.length}</div></div>
+                        <div class="bg-furyCard border border-furyBorder p-4 rounded-xl"><span class="text-xs text-gray-400">Pedidos Vendas</span><div class="text-2xl font-black text-furyAccent">${data.orders.length}</div></div>
+                        <div class="bg-furyCard border border-furyBorder p-4 rounded-xl"><span class="text-xs text-gray-400">Tickets Suporte</span><div class="text-2xl font-black text-yellow-400">${data.tickets.length}</div></div>
+                    </div>
+
+                    <!-- ÁREA DE APROVAÇÃO DE VENDEDORES -->
+                    <div class="bg-furyCard border border-furyBorder rounded-xl p-6 mb-8">
+                        <h3 class="font-bold mb-4 text-white">Solicitações de Vendedor Pendentes</h3>
+                        <div class="space-y-4">
+                            ${data.apps.length === 0 ? '<p class="text-xs text-gray-500">Nenhuma solicitação encontrada.</p>' : ''}
+                            ${data.apps.map(a => `
+                                <div class="bg-furyBg border border-furyBorder p-4 rounded-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                                    <div>
+                                        <div class="font-bold text-white text-sm">${a.username} <span class="text-xs text-gray-400 font-normal">(${a.discord_tag} • ID: ${a.discord_id})</span></div>
+                                        <div class="text-xs text-furyOrange mt-1"><strong>Produtos:</strong> ${a.products}</div>
+                                        <div class="text-xs text-gray-400 mt-1"><strong>Descrição:</strong> ${a.description}</div>
+                                        <div class="mt-2"><span class="text-[10px] uppercase font-bold px-2 py-0.5 rounded ${a.status === 'approved' ? 'bg-green-500/20 text-green-400' : a.status === 'rejected' ? 'bg-red-500/20 text-red-400' : 'bg-yellow-500/20 text-yellow-400'}">${a.status}</span></div>
+                                    </div>
+                                    ${a.status === 'pending' ? `
+                                        <div class="flex gap-2 w-full md:w-auto">
+                                            <button onclick="approveSeller(${a.id}, ${a.user_id})" class="flex-1 md:flex-none bg-furyAccent text-furyBg font-bold px-4 py-2 rounded-lg text-xs">✅ Aceitar Vendedor</button>
+                                            <button onclick="rejectSeller(${a.id})" class="flex-1 md:flex-none bg-red-500/20 text-red-400 border border-red-500/30 font-bold px-4 py-2 rounded-lg text-xs">❌ Recusar</button>
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            `).join('')}
+                        </div>
                     </div>
                 `;
             }
+        }
+
+        async function approveSeller(appId, userId) {
+            const res = await fetch('/api/admin/approve-seller', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
+                body: JSON.stringify({ appId, userId })
+            });
+            const data = await res.json();
+            showAlert(data.message, data.success);
+            if (data.success) navigate('admin');
+        }
+
+        async function rejectSeller(appId) {
+            const res = await fetch('/api/admin/reject-seller', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
+                body: JSON.stringify({ appId })
+            });
+            const data = await res.json();
+            showAlert(data.message, data.success);
+            if (data.success) navigate('admin');
         }
 
         async function buyProduct(title, price) {
