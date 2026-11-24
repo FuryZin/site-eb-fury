@@ -58,6 +58,7 @@
         let currentUser = localStorage.getItem('fury_user');
         let currentRole = localStorage.getItem('fury_role');
         let authToken = localStorage.getItem('fury_token');
+        let isCreatingOrder = false;
 
         function updateNav() {
             const authArea = document.getElementById('authNavArea');
@@ -124,7 +125,7 @@
                                         ${p.promo_price > 0 ? `<span class="line-through text-gray-500 text-xs mr-2">R$ ${p.price.toFixed(2)}</span><span class="text-furyAccent">R$ ${p.promo_price.toFixed(2)}</span>` : `R$ ${p.price.toFixed(2)}`}
                                         <span class="text-xs text-gray-500 font-normal block">Vendedor: ${p.seller_name}</span>
                                     </div>
-                                    <button onclick="createOrder('${p.title}', ${p.promo_price > 0 ? p.promo_price : p.price}, ${p.seller_id}, '${p.seller_name}')" class="w-full bg-furyAccent text-furyBg font-bold py-2.5 rounded-lg text-sm">Comprar Agora (GGMAX)</button>
+                                    <button id="buyBtn_${p.id}" onclick="createOrder('${p.title}', ${p.promo_price > 0 ? p.promo_price : p.price}, ${p.seller_id}, '${p.seller_name}', ${p.id})" class="w-full bg-furyAccent text-furyBg font-bold py-2.5 rounded-lg text-sm">Comprar Agora (GGMAX)</button>
                                 </div>
                             </div>
                         `).join('')}
@@ -148,7 +149,7 @@
                                     <div>
                                         <div class="font-bold text-white text-base">${o.product_title} <span class="text-xs text-furyAccent font-mono">(${o.order_code})</span></div>
                                         <div class="text-xs text-gray-400 mt-1">Vendedor: <strong>${o.seller_name}</strong> • Valor: <strong>R$ ${o.amount.toFixed(2)}</strong></div>
-                                        <div class="mt-2"><span class="text-xs font-bold px-2.5 py-1 rounded ${o.status === 'completed' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}">${o.status === 'completed' ? '✅ Entregue' : '⏳ Aguardando Entregas'}</span></div>
+                                        <div class="mt-2"><span class="text-xs font-bold px-2.5 py-1 rounded ${o.status === 'completed' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}">${o.status === 'completed' ? '✅ Entregue' : '⏳ Aguardando Entrega'}</span></div>
                                     </div>
                                     <button onclick="openOrderChat(${o.id})" class="bg-furyAccent text-furyBg font-bold px-5 py-2.5 rounded-lg text-sm"><i class="fa-solid fa-comments mr-1"></i> Abrir Chat do Pedido</button>
                                 </div>
@@ -159,7 +160,7 @@
             }
 
             else if (page === 'seller-dashboard') {
-                if (currentRole !== 'seller' && currentRole !== 'admin') return showAlert('Acesso restrito.', false);
+                if (currentRole !== 'seller' && currentRole !== 'admin') return showAlert('Acesso restrito ao painel.', false);
                 
                 const resProd = await fetch('/api/seller/my-products', { headers: { 'Authorization': 'Bearer ' + authToken } });
                 const dataProd = await resProd.json();
@@ -171,7 +172,6 @@
                     <div class="max-w-4xl mx-auto">
                         <h2 class="text-2xl font-black text-furyAccent mb-6"><i class="fa-solid fa-store mr-2"></i> Painel do Vendedor</h2>
 
-                        <!-- Vendas Recebidas -->
                         <div class="bg-furyCard border border-furyBorder p-6 rounded-2xl mb-8">
                             <h3 class="font-bold mb-4 text-white"><i class="fa-solid fa-receipt text-furyOrange mr-2"></i> Vendas Recebidas (Chat GGMAX)</h3>
                             <div class="space-y-3">
@@ -189,15 +189,14 @@
                             </div>
                         </div>
 
-                        <!-- Form de Anúncio -->
                         <div class="bg-furyCard border border-furyBorder p-6 rounded-2xl">
                             <h3 class="font-bold mb-4 text-white">Publicar Novo Anúncio</h3>
                             <form id="createProductForm" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div><label class="block text-xs text-gray-400 mb-1">Título do Anúncio</label><input type="text" id="prodTitle" required placeholder="Ex: Conta 50 Skins Mestre" class="w-full bg-furyBg border border-furyBorder rounded-lg p-2.5 text-sm"></div>
+                                <div><label class="block text-xs text-gray-400 mb-1">Título do Anúncio</label><input type="text" id="prodTitle" required placeholder="Ex: Conta Mestre Free Fire" class="w-full bg-furyBg border border-furyBorder rounded-lg p-2.5 text-sm"></div>
                                 <div><label class="block text-xs text-gray-400 mb-1">Categoria</label><select id="prodCategory" class="w-full bg-furyBg border border-furyBorder rounded-lg p-2.5 text-sm"><option>Diamantes</option><option>Gift Cards</option><option>Coaching</option><option>Serviços</option></select></div>
                                 <div><label class="block text-xs text-gray-400 mb-1">Preço Normal (R$)</label><input type="number" step="0.01" id="prodPrice" required class="w-full bg-furyBg border border-furyBorder rounded-lg p-2.5 text-sm"></div>
                                 <div><label class="block text-xs text-gray-400 mb-1">Preço Promocional (R$)</label><input type="number" step="0.01" id="prodPromoPrice" class="w-full bg-furyBg border border-furyBorder rounded-lg p-2.5 text-sm"></div>
-                                <div class="md:col-span-2"><label class="block text-xs text-gray-400 mb-1">URL da Imagem Ilustrativa (Link da Imagem)</label><input type="text" id="prodImageUrl" placeholder="https://exemplo.com/imagem.png" class="w-full bg-furyBg border border-furyBorder rounded-lg p-2.5 text-sm"></div>
+                                <div class="md:col-span-2"><label class="block text-xs text-gray-400 mb-1">URL da Imagem Ilustrativa</label><input type="text" id="prodImageUrl" placeholder="https://exemplo.com/imagem.png" class="w-full bg-furyBg border border-furyBorder rounded-lg p-2.5 text-sm"></div>
                                 <div class="md:col-span-2"><label class="block text-xs text-gray-400 mb-1">Descrição</label><textarea id="prodDesc" rows="2" required class="w-full bg-furyBg border border-furyBorder rounded-lg p-2.5 text-sm"></textarea></div>
                                 <div class="md:col-span-2"><button type="submit" class="w-full bg-furyAccent text-furyBg font-bold py-3 rounded-lg text-sm">Publicar Anúncio</button></div>
                             </form>
@@ -228,14 +227,17 @@
             else if (page === 'order-chat') {
                 const res = await fetch(`/api/orders/${extraId}/chat`, { headers: { 'Authorization': 'Bearer ' + authToken } });
                 const data = await res.json();
-                if (!data.success) return showAlert('Erro ao carregar chat.', false);
+                
+                if (!data.success) {
+                    showAlert(data.message, false);
+                    return navigate('my-orders');
+                }
 
                 const order = data.order;
                 const isSellerOrAdmin = (currentRole === 'seller' || currentRole === 'admin');
 
                 container.innerHTML = `
                     <div class="max-w-3xl mx-auto bg-furyCard border border-furyBorder rounded-2xl overflow-hidden flex flex-col h-[650px]">
-                        <!-- Cabeçalho do Chat -->
                         <div class="bg-zinc-900 border-b border-furyBorder p-4 flex justify-between items-center">
                             <div>
                                 <h3 class="font-bold text-white text-base">${order.product_title}</h3>
@@ -247,13 +249,11 @@
                             </div>
                         </div>
 
-                        <!-- Chave Pix para Pagamento -->
                         <div class="bg-furyBg border-b border-furyBorder p-3 text-center text-xs">
                             <span class="text-gray-400">Chave Pix para Pagamento:</span>
                             <div class="font-mono text-furyAccent font-bold select-all mt-1">${order.pix_payload}</div>
                         </div>
 
-                        <!-- Corpo de Mensagens do Chat -->
                         <div id="chatMessages" class="flex-1 p-4 overflow-y-auto space-y-3 bg-[#0c0c0e]">
                             ${data.messages.map(m => `
                                 <div class="flex flex-col ${m.sender_name === currentUser ? 'items-end' : 'items-start'}">
@@ -265,7 +265,6 @@
                             `).join('')}
                         </div>
 
-                        <!-- Form de Envio de Mensagem -->
                         <form id="sendMessageForm" class="p-3 bg-zinc-900 border-t border-furyBorder flex gap-2">
                             <input type="text" id="chatInput" required placeholder="Digite sua mensagem para a entrega/dúvida..." class="flex-1 bg-furyBg border border-furyBorder rounded-xl px-4 text-sm text-white focus:outline-none">
                             <button type="submit" class="bg-furyAccent text-furyBg font-bold px-5 py-2.5 rounded-xl text-sm"><i class="fa-solid fa-paper-plane"></i></button>
@@ -422,19 +421,34 @@
             }
         }
 
-        async function createOrder(title, price, sellerId, sellerName) {
+        async function createOrder(title, price, sellerId, sellerName, prodId) {
             if (!authToken) return showAlert('Faça login primeiro para comprar!', false);
-            const res = await fetch('/api/checkout/create-order', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
-                body: JSON.stringify({ productTitle: title, amount: price, sellerId, sellerName })
-            });
-            const data = await res.json();
-            if (data.success) {
-                showAlert('Pedido criado! Redirecionando para o Chat do Pedido...', true);
-                setTimeout(() => navigate('order-chat', data.orderId), 1000);
-            } else {
-                showAlert(data.message, false);
+            if (isCreatingOrder) return; // Trava contra cliques duplos
+
+            isCreatingOrder = true;
+            const btn = document.getElementById(`buyBtn_${prodId}`);
+            if (btn) {
+                btn.disabled = true;
+                btn.innerText = 'Gerando Pedido...';
+            }
+
+            try {
+                const res = await fetch('/api/checkout/create-order', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
+                    body: JSON.stringify({ productTitle: title, amount: price, sellerId, sellerName })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showAlert('Pedido criado! Abrindo chat do pedido...', true);
+                    setTimeout(() => navigate('order-chat', data.orderId), 500);
+                } else {
+                    showAlert(data.message, false);
+                }
+            } catch (e) {
+                showAlert('Erro ao processar pedido.', false);
+            } finally {
+                isCreatingOrder = false;
             }
         }
 
