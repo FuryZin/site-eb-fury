@@ -40,7 +40,7 @@ db.serialize(() => {
         price REAL,
         promo_price REAL DEFAULT 0,
         description TEXT,
-        image_type TEXT DEFAULT 'gem',
+        image_url TEXT,
         status TEXT DEFAULT 'active',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
@@ -48,9 +48,23 @@ db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS orders (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         order_code TEXT UNIQUE,
+        buyer_id INTEGER,
         buyer_name TEXT,
+        seller_id INTEGER,
+        seller_name TEXT,
         product_title TEXT,
         amount REAL,
+        pix_payload TEXT,
+        status TEXT DEFAULT 'awaiting_payment',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+
+    db.run(`CREATE TABLE IF NOT EXISTS order_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_id INTEGER,
+        sender_id INTEGER,
+        sender_name TEXT,
+        message TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
 
@@ -93,21 +107,16 @@ function authenticateToken(req, res, next) {
 }
 
 // ==========================================
-// AUTENTICAÇÃO (MEMBROS E DONOS)
+// AUTENTICAÇÃO
 // ==========================================
 
-// Registro (Normal ou Dono)
 app.post('/api/auth/register', async (req, res) => {
     const { username, email, password, isOwner, ownerSecret } = req.body;
     if (!username || !email || !password) return res.status(400).json({ success: false, message: 'Preencha todos os campos!' });
 
     let userRole = 'user';
-
-    // Se marcou a opção Dono, valida a senha mestra
     if (isOwner) {
-        if (ownerSecret !== OWNER_SECRET_KEY) {
-            return res.status(403).json({ success: false, message: 'Senha Mestra de Dono incorreta!' });
-        }
+        if (ownerSecret !== OWNER_SECRET_KEY) return res.status(403).json({ success: false, message: 'Senha de Dono incorreta!' });
         userRole = 'admin';
     }
 
@@ -115,11 +124,10 @@ app.post('/api/auth/register', async (req, res) => {
     db.run("INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)", [username, email, hash, userRole], function(err) {
         if (err) return res.status(400).json({ success: false, message: 'Usuário ou E-mail já cadastrado.' });
         const token = jwt.sign({ id: this.lastID, username, role: userRole }, JWT_SECRET, { expiresIn: '7d' });
-        res.json({ success: true, message: isOwner ? 'Conta de DONO criada com sucesso!' : 'Conta criada com sucesso!', token, username, role: userRole });
+        res.json({ success: true, message: 'Conta criada com sucesso!', token, username, role: userRole });
     });
 });
 
-// Login (Normal ou Dono)
 app.post('/api/auth/login', (req, res) => {
     const { email, password, isOwner, ownerSecret } = req.body;
     db.get("SELECT * FROM users WHERE email = ?", [email], async (err, user) => {
@@ -128,12 +136,8 @@ app.post('/api/auth/login', (req, res) => {
         if (!validPass) return res.status(400).json({ success: false, message: 'E-mail ou senha incorretos.' });
 
         let finalRole = user.role;
-
-        // Se estiver logando como Dono, valida a senha de dono e atualiza o cargo se necessário
         if (isOwner) {
-            if (ownerSecret !== OWNER_SECRET_KEY) {
-                return res.status(403).json({ success: false, message: 'Senha Mestra de Dono incorreta!' });
-            }
+            if (ownerSecret !== OWNER_SECRET_KEY) return res.status(403).json({ success: false, message: 'Senha de Dono incorreta!' });
             finalRole = 'admin';
             db.run("UPDATE users SET role = 'admin' WHERE id = ?", [user.id]);
         }
@@ -144,7 +148,7 @@ app.post('/api/auth/login', (req, res) => {
 });
 
 // ==========================================
-// PRODUTOS & LOJA DO VENDEDOR
+// PRODUTOS
 // ==========================================
 
 app.get('/api/products', (req, res) => {
@@ -155,17 +159,17 @@ app.get('/api/products', (req, res) => {
 
 app.post('/api/products/create', authenticateToken, (req, res) => {
     if (req.user.role !== 'seller' && req.user.role !== 'admin') {
-        return res.status(403).json({ success: false, message: 'Apenas vendedores aprovados podem cadastrar produtos.' });
+        return res.status(403).json({ success: false, message: 'Apenas vendedores aprovados podem publicar anúncios.' });
     }
 
-    const { title, category, price, promoPrice, description, imageType } = req.body;
+    const { title, category, price, promoPrice, description, imageUrl } = req.body;
     if (!title || !price || !category) return res.status(400).json({ success: false, message: 'Preencha os campos obrigatórios.' });
 
-    db.run("INSERT INTO products (seller_id, seller_name, title, category, price, promo_price, description, image_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        [req.user.id, req.user.username, title, category, parseFloat(price), parseFloat(promoPrice || 0), description, imageType || 'gem'],
+    db.run("INSERT INTO products (seller_id, seller_name, title, category, price, promo_price, description, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [req.user.id, req.user.username, title, category, parseFloat(price), parseFloat(promoPrice || 0), description, imageUrl || ''],
         function(err) {
             if (err) return res.status(500).json({ success: false, message: 'Erro ao cadastrar produto.' });
-            res.json({ success: true, message: 'Produto/Promoção cadastrado com sucesso!' });
+            res.json({ success: true, message: 'Produto cadastrado com sucesso!' });
         }
     );
 });
@@ -177,54 +181,119 @@ app.get('/api/seller/my-products', authenticateToken, (req, res) => {
 });
 
 // ==========================================
-// CHECKOUT PIX + DISCORD SALES WEBHOOK
+// SISTEMA DE PEDIDOS E CHAT ESTILO GGMAX
 // ==========================================
 
-app.post('/api/checkout/pix', authenticateToken, (req, res) => {
-    const { productTitle, amount } = req.body;
-    const orderCode = `FUR-${Math.floor(100000 + Math.random() * 900000)}`;
+// Criar Pedido e Chat do Pedido
+app.post('/api/checkout/create-order', authenticateToken, (req, res) => {
+    const { productTitle, amount, sellerId, sellerName } = req.body;
+    const orderCode = `GG-${Math.floor(100000 + Math.random() * 900000)}`;
     const pixKey = process.env.PIX_KEY || 'pix@furymarket.com';
+    const pixPayload = `00020126580014BR.GOV.BCB.PIX0136${pixKey}5204000053039865405${amount}5802BR5919FuryMarket6009SAOPAULO62070503***6304E2CA`;
 
-    db.run("INSERT INTO orders (order_code, buyer_name, product_title, amount) VALUES (?, ?, ?, ?)",
-        [orderCode, req.user.username, productTitle, parseFloat(amount)], async (err) => {
-            if (err) return res.status(500).json({ success: false, message: 'Erro ao criar pedido.' });
+    db.run("INSERT INTO orders (order_code, buyer_id, buyer_name, seller_id, seller_name, product_title, amount, pix_payload) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [orderCode, req.user.id, req.user.username, sellerId || 1, sellerName || 'FuryStore', productTitle, parseFloat(amount), pixPayload],
+        function(err) {
+            if (err) return res.status(500).json({ success: false, message: 'Erro ao gerar pedido.' });
+            const orderId = this.lastID;
 
+            // Mensagem Inicial Automática no Chat do Pedido
+            db.run("INSERT INTO order_messages (order_id, sender_id, sender_name, message) VALUES (?, 0, 'Sistema', ?)",
+                [orderId, `Pedido #${orderCode} gerado! Faça o pagamento no Pix abaixo e aguarde o vendedor enviar seu produto aqui neste chat.`]);
+
+            // Webhook Vendas Discord
             const salesWebhook = process.env.DISCORD_SALES_WEBHOOK_URL;
             if (salesWebhook && salesWebhook.startsWith('http')) {
                 try {
-                    await fetch(salesWebhook, {
+                    fetch(salesWebhook, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             embeds: [{
-                                title: `⚡ NOVA VENDA REALIZADA!`,
+                                title: `🛒 NOVO PEDIDO GERADO (ESTILO GGMAX)`,
                                 color: 0x00FF66,
                                 fields: [
+                                    { name: "🆔 Pedido", value: orderCode, inline: true },
                                     { name: "📦 Produto", value: productTitle, inline: true },
                                     { name: "💰 Valor", value: `R$ ${parseFloat(amount).toFixed(2)}`, inline: true },
-                                    { name: "👤 Comprador", value: req.user.username, inline: true },
-                                    { name: "🆔 Pedido", value: orderCode, inline: false }
+                                    { name: "👤 Comprador", value: req.user.username, inline: true }
                                 ],
                                 timestamp: new Date().toISOString()
                             }]
                         })
                     });
-                } catch (e) { console.error('Erro Webhook Vendas:', e); }
+                } catch (e) {}
             }
 
-            res.json({
-                success: true,
-                orderCode,
-                amount,
-                pixKey,
-                pixPayload: `00020126580014BR.GOV.BCB.PIX0136${pixKey}5204000053039865405${amount}5802BR5919FuryMarket6009SAOPAULO62070503***6304E2CA`
-            });
+            res.json({ success: true, message: 'Pedido gerado!', orderId, orderCode, pixKey, pixPayload });
         }
     );
 });
 
+// Listar Meus Pedidos (Comprador)
+app.get('/api/orders/my-orders', authenticateToken, (req, res) => {
+    db.all("SELECT * FROM orders WHERE buyer_id = ? ORDER BY id DESC", [req.user.id], (err, rows) => {
+        res.json({ success: true, orders: rows || [] });
+    });
+});
+
+// Listar Vendas Recebidas (Vendedor/Admin)
+app.get('/api/orders/seller-sales', authenticateToken, (req, res) => {
+    let query = "SELECT * FROM orders WHERE seller_id = ? ORDER BY id DESC";
+    let params = [req.user.id];
+
+    if (req.user.role === 'admin') {
+        query = "SELECT * FROM orders ORDER BY id DESC";
+        params = [];
+    }
+
+    db.all(query, params, (err, rows) => {
+        res.json({ success: true, sales: rows || [] });
+    });
+});
+
+// Detalhes + Mensagens do Chat do Pedido
+app.get('/api/orders/:id/chat', authenticateToken, (req, res) => {
+    const orderId = req.params.id;
+
+    db.get("SELECT * FROM orders WHERE id = ?", [orderId], (err, order) => {
+        if (err || !order) return res.status(404).json({ success: false, message: 'Pedido não encontrado.' });
+
+        db.all("SELECT * FROM order_messages WHERE order_id = ? ORDER BY id ASC", [orderId], (err, messages) => {
+            res.json({ success: true, order, messages: messages || [] });
+        });
+    });
+});
+
+// Enviar Mensagem no Chat do Pedido
+app.post('/api/orders/:id/send-message', authenticateToken, (req, res) => {
+    const orderId = req.params.id;
+    const { message } = req.body;
+
+    if (!message) return res.status(400).json({ success: false, message: 'Digite uma mensagem.' });
+
+    db.run("INSERT INTO order_messages (order_id, sender_id, sender_name, message) VALUES (?, ?, ?, ?)",
+        [orderId, req.user.id, req.user.username, message], (err) => {
+            if (err) return res.status(500).json({ success: false, message: 'Erro ao enviar mensagem.' });
+            res.json({ success: true, message: 'Mensagem enviada!' });
+        }
+    );
+});
+
+// Concluir Pedido (Vendedor/Admin)
+app.post('/api/orders/:id/complete', authenticateToken, (req, res) => {
+    const orderId = req.params.id;
+
+    db.run("UPDATE orders SET status = 'completed' WHERE id = ?", [orderId], (err) => {
+        if (err) return res.status(500).json({ success: false, message: 'Erro ao concluir pedido.' });
+        
+        db.run("INSERT INTO order_messages (order_id, sender_id, sender_name, message) VALUES (?, 0, 'Sistema', '✅ ESTE PEDIDO FOI CONCLUÍDO E ENTREGUE PELO VENDEDOR!')");
+        res.json({ success: true, message: 'Pedido marcado como Concluído!' });
+    });
+});
+
 // ==========================================
-// SOLICITAÇÃO DE VENDEDOR + DISCORD NOTIFY
+// SOLICITAÇÃO VENDEDOR & ADMIN
 // ==========================================
 
 app.post('/api/seller/apply', authenticateToken, async (req, res) => {
@@ -236,41 +305,33 @@ app.post('/api/seller/apply', authenticateToken, async (req, res) => {
             if (err) return res.status(500).json({ success: false, message: 'Erro ao salvar solicitação.' });
 
             const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
-            const roleId = process.env.DISCORD_ROLE_ID;
-
             if (webhookUrl && webhookUrl.startsWith('http')) {
                 try {
-                    const roleMention = roleId ? `<@&${roleId}>` : '';
-                    await fetch(webhookUrl, {
+                    fetch(webhookUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            content: `🚨 ${roleMention} **NOVA SOLICITAÇÃO DE VENDEDOR!**`,
                             embeds: [{
-                                title: `📄 Código: ${appCode}`,
+                                title: `🚨 SOLICITAÇÃO DE VENDEDOR: ${appCode}`,
                                 color: 0xFF6600,
                                 fields: [
                                     { name: "👤 Usuário", value: req.user.username, inline: true },
                                     { name: "🎮 Discord", value: `${discordTag} (${discordId})`, inline: true },
-                                    { name: "📦 Produtos Pretendidos", value: products, inline: false },
+                                    { name: "📦 Produtos", value: products, inline: false },
                                     { name: "📝 Descrição", value: description, inline: false },
-                                    { name: "⚙️ Ação do Dono", value: "Acesse o Painel Admin do site para **Aceitar** ou **Recusar** esta solicitação.", inline: false }
+                                    { name: "⚙️ Ação", value: "Acesse o Painel do Dono no site para aprovar.", inline: false }
                                 ],
                                 timestamp: new Date().toISOString()
                             }]
                         })
                     });
-                } catch (e) { console.error('Erro Webhook Discord:', e); }
+                } catch (e) {}
             }
 
-            res.json({ success: true, message: 'Solicitação enviada! Aguarde a aprovação do Dono pelo painel.' });
+            res.json({ success: true, message: 'Solicitação enviada! Aguarde aprovação no painel.' });
         }
     );
 });
-
-// ==========================================
-// PAINEL ADMIN: APROVAR OU RECUSAR NO SITE
-// ==========================================
 
 app.get('/api/admin/dashboard', authenticateToken, (req, res) => {
     if (req.user.role !== 'admin') return res.status(403).json({ success: false, message: 'Acesso negado.' });
@@ -286,32 +347,26 @@ app.get('/api/admin/dashboard', authenticateToken, (req, res) => {
     });
 });
 
-// Aceitar Vendedor pelo Painel do Site
 app.post('/api/admin/approve-seller', authenticateToken, (req, res) => {
     if (req.user.role !== 'admin') return res.status(403).json({ success: false, message: 'Acesso negado.' });
     const { appId, userId } = req.body;
 
-    db.run("UPDATE users SET role = 'seller' WHERE id = ?", [userId], (err) => {
-        if (err) return res.status(500).json({ success: false, message: 'Erro ao promover usuário.' });
-        
+    db.run("UPDATE users SET role = 'seller' WHERE id = ?", [userId], () => {
         db.run("UPDATE seller_applications SET status = 'approved' WHERE id = ?", [appId], () => {
             res.json({ success: true, message: 'Vendedor aprovado com sucesso!' });
         });
     });
 });
 
-// Recusar Vendedor pelo Painel do Site
 app.post('/api/admin/reject-seller', authenticateToken, (req, res) => {
     if (req.user.role !== 'admin') return res.status(403).json({ success: false, message: 'Acesso negado.' });
     const { appId } = req.body;
 
-    db.run("UPDATE seller_applications SET status = 'rejected' WHERE id = ?", [appId], (err) => {
-        if (err) return res.status(500).json({ success: false, message: 'Erro ao recusar solicitação.' });
+    db.run("UPDATE seller_applications SET status = 'rejected' WHERE id = ?", [appId], () => {
         res.json({ success: true, message: 'Solicitação recusada.' });
     });
 });
 
-// TICKETS DE SUPORTE
 app.post('/api/tickets/create', authenticateToken, (req, res) => {
     const { subject, category, message } = req.body;
     const ticketCode = `TCK-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -324,14 +379,11 @@ app.post('/api/tickets/create', authenticateToken, (req, res) => {
     );
 });
 
-// SERVIR FRONTEND (SPA)
+// SERVIR SPA FRONTEND
 app.get('*', (req, res) => {
     const indexPath = path.join(__dirname, 'public', 'index.html');
-    if (fs.existsSync(indexPath)) {
-        res.sendFile(indexPath);
-    } else {
-        res.status(404).send('<h1>Erro: public/index.html não encontrado!</h1>');
-    }
+    if (fs.existsSync(indexPath)) res.sendFile(indexPath);
+    else res.status(404).send('<h1>Erro: public/index.html não encontrado!</h1>');
 });
 
 app.listen(PORT, '0.0.0.0', () => {
