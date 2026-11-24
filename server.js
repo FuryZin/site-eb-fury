@@ -181,10 +181,10 @@ app.get('/api/seller/my-products', authenticateToken, (req, res) => {
 });
 
 // ==========================================
-// SISTEMA DE PEDIDOS E CHAT ESTILO GGMAX
+// PEDIDOS E CHAT (COM PROTEÇÃO DE PRIVACIDADE)
 // ==========================================
 
-// Criar Pedido e Chat do Pedido
+// Criar Pedido
 app.post('/api/checkout/create-order', authenticateToken, (req, res) => {
     const { productTitle, amount, sellerId, sellerName } = req.body;
     const orderCode = `GG-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -197,11 +197,9 @@ app.post('/api/checkout/create-order', authenticateToken, (req, res) => {
             if (err) return res.status(500).json({ success: false, message: 'Erro ao gerar pedido.' });
             const orderId = this.lastID;
 
-            // Mensagem Inicial Automática no Chat do Pedido
             db.run("INSERT INTO order_messages (order_id, sender_id, sender_name, message) VALUES (?, 0, 'Sistema', ?)",
-                [orderId, `Pedido #${orderCode} gerado! Faça o pagamento no Pix abaixo e aguarde o vendedor enviar seu produto aqui neste chat.`]);
+                [orderId, `Pedido #${orderCode} gerado! Faça o pagamento no Pix abaixo e aguarde o vendedor entregar seu produto aqui.`]);
 
-            // Webhook Vendas Discord
             const salesWebhook = process.env.DISCORD_SALES_WEBHOOK_URL;
             if (salesWebhook && salesWebhook.startsWith('http')) {
                 try {
@@ -210,7 +208,7 @@ app.post('/api/checkout/create-order', authenticateToken, (req, res) => {
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             embeds: [{
-                                title: `🛒 NOVO PEDIDO GERADO (ESTILO GGMAX)`,
+                                title: `🛒 NOVO PEDIDO GERADO (GGMAX)`,
                                 color: 0x00FF66,
                                 fields: [
                                     { name: "🆔 Pedido", value: orderCode, inline: true },
@@ -230,14 +228,14 @@ app.post('/api/checkout/create-order', authenticateToken, (req, res) => {
     );
 });
 
-// Listar Meus Pedidos (Comprador)
+// Listar Apenas os Meus Pedidos (Comprador)
 app.get('/api/orders/my-orders', authenticateToken, (req, res) => {
     db.all("SELECT * FROM orders WHERE buyer_id = ? ORDER BY id DESC", [req.user.id], (err, rows) => {
         res.json({ success: true, orders: rows || [] });
     });
 });
 
-// Listar Vendas Recebidas (Vendedor/Admin)
+// Listar Apenas as Vendas do Vendedor (ou Todas para Admin)
 app.get('/api/orders/seller-sales', authenticateToken, (req, res) => {
     let query = "SELECT * FROM orders WHERE seller_id = ? ORDER BY id DESC";
     let params = [req.user.id];
@@ -252,12 +250,20 @@ app.get('/api/orders/seller-sales', authenticateToken, (req, res) => {
     });
 });
 
-// Detalhes + Mensagens do Chat do Pedido
+// Chat do Pedido (Com Validação Estrita de Acesso)
 app.get('/api/orders/:id/chat', authenticateToken, (req, res) => {
     const orderId = req.params.id;
 
     db.get("SELECT * FROM orders WHERE id = ?", [orderId], (err, order) => {
         if (err || !order) return res.status(404).json({ success: false, message: 'Pedido não encontrado.' });
+
+        const isBuyer = order.buyer_id === req.user.id;
+        const isSeller = order.seller_id === req.user.id;
+        const isAdmin = req.user.role === 'admin';
+
+        if (!isBuyer && !isSeller && !isAdmin) {
+            return res.status(403).json({ success: false, message: 'Acesso negado: Este pedido pertence a outro usuário.' });
+        }
 
         db.all("SELECT * FROM order_messages WHERE order_id = ? ORDER BY id ASC", [orderId], (err, messages) => {
             res.json({ success: true, order, messages: messages || [] });
@@ -270,25 +276,48 @@ app.post('/api/orders/:id/send-message', authenticateToken, (req, res) => {
     const orderId = req.params.id;
     const { message } = req.body;
 
-    if (!message) return res.status(400).json({ success: false, message: 'Digite uma mensagem.' });
+    if (!message || !message.trim()) return res.status(400).json({ success: false, message: 'Digite uma mensagem.' });
 
-    db.run("INSERT INTO order_messages (order_id, sender_id, sender_name, message) VALUES (?, ?, ?, ?)",
-        [orderId, req.user.id, req.user.username, message], (err) => {
-            if (err) return res.status(500).json({ success: false, message: 'Erro ao enviar mensagem.' });
-            res.json({ success: true, message: 'Mensagem enviada!' });
+    db.get("SELECT * FROM orders WHERE id = ?", [orderId], (err, order) => {
+        if (err || !order) return res.status(404).json({ success: false, message: 'Pedido não encontrado.' });
+
+        const isBuyer = order.buyer_id === req.user.id;
+        const isSeller = order.seller_id === req.user.id;
+        const isAdmin = req.user.role === 'admin';
+
+        if (!isBuyer && !isSeller && !isAdmin) {
+            return res.status(403).json({ success: false, message: 'Acesso negado.' });
         }
-    );
+
+        db.run("INSERT INTO order_messages (order_id, sender_id, sender_name, message) VALUES (?, ?, ?, ?)",
+            [orderId, req.user.id, req.user.username, message], (err) => {
+                if (err) return res.status(500).json({ success: false, message: 'Erro ao enviar mensagem.' });
+                res.json({ success: true, message: 'Mensagem enviada!' });
+            }
+        );
+    });
 });
 
-// Concluir Pedido (Vendedor/Admin)
+// Concluir Pedido
 app.post('/api/orders/:id/complete', authenticateToken, (req, res) => {
     const orderId = req.params.id;
 
-    db.run("UPDATE orders SET status = 'completed' WHERE id = ?", [orderId], (err) => {
-        if (err) return res.status(500).json({ success: false, message: 'Erro ao concluir pedido.' });
-        
-        db.run("INSERT INTO order_messages (order_id, sender_id, sender_name, message) VALUES (?, 0, 'Sistema', '✅ ESTE PEDIDO FOI CONCLUÍDO E ENTREGUE PELO VENDEDOR!')");
-        res.json({ success: true, message: 'Pedido marcado como Concluído!' });
+    db.get("SELECT * FROM orders WHERE id = ?", [orderId], (err, order) => {
+        if (err || !order) return res.status(404).json({ success: false, message: 'Pedido não encontrado.' });
+
+        const isSeller = order.seller_id === req.user.id;
+        const isAdmin = req.user.role === 'admin';
+
+        if (!isSeller && !isAdmin) {
+            return res.status(403).json({ success: false, message: 'Apenas o vendedor ou dono pode concluir o pedido.' });
+        }
+
+        db.run("UPDATE orders SET status = 'completed' WHERE id = ?", [orderId], (err) => {
+            if (err) return res.status(500).json({ success: false, message: 'Erro ao concluir pedido.' });
+            
+            db.run("INSERT INTO order_messages (order_id, sender_id, sender_name, message) VALUES (?, 0, 'Sistema', '✅ ESTE PEDIDO FOI MARCADOC OMO CONCLUÍDO E ENTREGUE!')");
+            res.json({ success: true, message: 'Pedido marcado como Concluído!' });
+        });
     });
 });
 
