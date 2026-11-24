@@ -9,7 +9,7 @@ const jwt = require('jsonwebtoken');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'fury_secret_key_2026';
-const OWNER_SECRET_KEY = process.env.OWNER_SECRET_KEY || 'DONO123456';
+const OWNER_SECRET_KEY = process.env.OWNER_SECRET_KEY || '71135206Fury';
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
